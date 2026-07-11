@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
-import { Mail, Key, HelpCircle, ArrowRight } from 'lucide-react';
+import { Mail, Key, HelpCircle, ArrowRight, User, Phone } from 'lucide-react';
 
 interface AuthModalProps {
   view: 'login' | 'register' | null;
@@ -16,6 +16,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [username, setUsername] = useState('');
+  const [phone, setPhone] = useState('');
   const [refCode, setRefCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,12 +51,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
     }
 
     if (view === 'register') {
+      const emailLower = email.trim().toLowerCase();
+      if (!emailLower.endsWith('@gmail.com')) {
+        setError('Only @gmail.com email addresses are permitted. Temporary and other email domains are strictly prohibited.');
+        setLoading(false);
+        return;
+      }
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters long.');
+        setLoading(false);
+        return;
+      }
+      if (!firstName.trim()) {
+        setError('First name is required.');
+        setLoading(false);
+        return;
+      }
+      if (!lastName.trim()) {
+        setError('Last name is required.');
+        setLoading(false);
+        return;
+      }
+      if (!username.trim()) {
+        setError('Username is required.');
+        setLoading(false);
+        return;
+      }
       if (password !== confirmPassword) {
         setError('Passwords do not match.');
         setLoading(false);
         return;
       }
-      const res = await register(email, password, refCode || undefined);
+      const res = await register(
+        email, 
+        password, 
+        refCode || undefined, 
+        firstName, 
+        lastName, 
+        username, 
+        phone
+      );
       setLoading(false);
       if (res.success) {
         onClose();
@@ -143,6 +181,83 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {view === 'register' && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                      First Name
+                    </label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                      <input
+                        type="text"
+                        required
+                        disabled={loading}
+                        placeholder="John"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                      Last Name
+                    </label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                      <input
+                        type="text"
+                        required
+                        disabled={loading}
+                        placeholder="Doe"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                      Username
+                    </label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                      <input
+                        type="text"
+                        required
+                        disabled={loading}
+                        placeholder="johndoe12"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                      Phone (Optional)
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                      <input
+                        type="tel"
+                        disabled={loading}
+                        placeholder="+123456789"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
             <div>
               <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
                 {t.emailLabel}

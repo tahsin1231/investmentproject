@@ -31,7 +31,15 @@ interface AppContextType {
   setSelectedStock: (stock: StockData) => void;
   language: 'en' | 'es';
   setLanguage: (lang: 'en' | 'es') => void;
-  register: (email: string, password?: string, referralCode?: string) => Promise<{ success: boolean; error?: string }>;
+  register: (
+    email: string, 
+    password?: string, 
+    referralCode?: string,
+    firstName?: string,
+    lastName?: string,
+    username?: string,
+    phone?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   verifyEmail: () => void;
   login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: (referralCode?: string) => Promise<{ success: boolean; error?: string }>;
@@ -98,7 +106,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               referralCode: refCode,
               referredBy: localStorage.getItem('doddoge_pending_referral') || null,
               referralsCount: 0,
-              createdAt: new Date().toISOString()
+              createdAt: new Date().toISOString(),
+              firstName: fbUser.displayName ? fbUser.displayName.split(' ')[0] : '',
+              lastName: fbUser.displayName ? fbUser.displayName.split(' ').slice(1).join(' ') : '',
+              username: (fbUser.email || '').split('@')[0] + Math.floor(Math.random() * 1000),
+              phone: ''
             };
             await setDoc(userDocRef, newUser);
             setUser(newUser);
@@ -174,10 +186,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(interval);
   }, [user, activePlans, miningActive]);
 
-  const register = async (email: string, password?: string, referralCode?: string) => {
+  const register = async (
+    email: string, 
+    password?: string, 
+    referralCode?: string,
+    firstName?: string,
+    lastName?: string,
+    username?: string,
+    phone?: string
+  ) => {
     try {
       if (!password) {
         return { success: false, error: 'Password is required' };
+      }
+      if (password.length < 6) {
+        return { success: false, error: 'Password must be at least 6 characters long.' };
+      }
+      if (!firstName || !firstName.trim()) {
+        return { success: false, error: 'First name is required.' };
+      }
+      if (!lastName || !lastName.trim()) {
+        return { success: false, error: 'Last name is required.' };
+      }
+      if (!username || !username.trim()) {
+        return { success: false, error: 'Username is required.' };
+      }
+      
+      const cleanUsername = username.trim().toLowerCase();
+      // Check username uniqueness in Firestore
+      const usersRef = collection(db, 'users');
+      const qUsername = query(usersRef, where('username', '==', cleanUsername));
+      const usernameSnap = await getDocs(qUsername);
+      if (!usernameSnap.empty) {
+        return { success: false, error: 'Username already exists. Please choose a different unique username.' };
+      }
+
+      const emailLower = email.trim().toLowerCase();
+      if (!emailLower.endsWith('@gmail.com')) {
+        return { success: false, error: 'Only @gmail.com email addresses are permitted. Temporary and other email domains are strictly prohibited.' };
       }
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       const fbUser = userCred.user;
@@ -189,7 +235,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const finalReferralCode = referralCode || localStorage.getItem('doddoge_pending_referral') || null;
 
       if (finalReferralCode) {
-        const usersRef = collection(db, 'users');
         const q = query(usersRef, where('referralCode', '==', finalReferralCode));
         const querySnap = await getDocs(q);
         if (!querySnap.empty) {
@@ -211,7 +256,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         referralCode: refCode,
         referredBy,
         referralsCount: 0,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        username: cleanUsername,
+        phone: phone ? phone.trim() : ''
       };
 
       // Set user profile in Firestore
@@ -282,6 +331,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const userCred = await signInWithPopup(auth, provider);
       const fbUser = userCred.user;
 
+      const emailLower = (fbUser.email || '').toLowerCase();
+      if (!emailLower.endsWith('@gmail.com')) {
+        await auth.signOut();
+        return { success: false, error: 'Only @gmail.com email addresses are permitted. Temporary and other email domains are strictly prohibited.' };
+      }
+
       const userDocRef = doc(db, 'users', fbUser.uid);
       const userSnap = await getDoc(userDocRef);
 
@@ -315,7 +370,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           referralCode: refCode,
           referredBy,
           referralsCount: 0,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          firstName: fbUser.displayName ? fbUser.displayName.split(' ')[0] : '',
+          lastName: fbUser.displayName ? fbUser.displayName.split(' ').slice(1).join(' ') : '',
+          username: (fbUser.email || '').split('@')[0] + Math.floor(Math.random() * 1000),
+          phone: ''
         };
 
         // Set user profile in Firestore

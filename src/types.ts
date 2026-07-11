@@ -9,6 +9,10 @@ export interface User {
   referredBy?: string | null;
   referralsCount: number;
   createdAt: string;
+  firstName: string;
+  lastName: string;
+  username: string;
+  phone?: string;
 }
 
 export interface Plan {

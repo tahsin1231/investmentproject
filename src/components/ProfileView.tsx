@@ -31,6 +31,28 @@ export const ProfileView: React.FC = () => {
           <p className="text-[9px] text-emerald-500/40 mt-1 uppercase">Node UUID: {user.id}</p>
         </div>
 
+        <div className="border-t border-emerald-500/10 pt-4 space-y-3 text-xs">
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-emerald-500/55 uppercase">FIRST NAME</span>
+            <span className="text-white font-semibold">{user.firstName || 'NOT PROVIDED'}</span>
+          </div>
+
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-emerald-500/55 uppercase">LAST NAME</span>
+            <span className="text-white font-semibold">{user.lastName || 'NOT PROVIDED'}</span>
+          </div>
+
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-emerald-500/55 uppercase">USERNAME</span>
+            <span className="text-emerald-300 font-bold font-mono">@{user.username || 'NOT_SET'}</span>
+          </div>
+
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-emerald-500/55 uppercase">PHONE</span>
+            <span className="text-white font-mono">{user.phone || 'NOT PROVIDED'}</span>
+          </div>
+        </div>
+
         <div className="border-t border-emerald-500/10 pt-4 space-y-3.5 text-xs">
           <div className="flex justify-between items-center">
             <span className="text-emerald-500/55 uppercase">STATUS</span>
