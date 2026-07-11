@@ -43,11 +43,14 @@ function MainApp() {
     const handleLocationCheck = () => {
       const path = window.location.pathname;
       const hash = window.location.hash;
+      const search = window.location.search;
       if (
         path === '/admin' || 
         path.endsWith('/admin') || 
         hash === '#/admin' || 
-        hash === '#admin'
+        hash === '#admin' ||
+        search.includes('admin=true') ||
+        search.includes('view=admin')
       ) {
         setAdminOpen(true);
       }
