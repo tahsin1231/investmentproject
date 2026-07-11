@@ -3,13 +3,15 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
+import { HomeView } from './components/HomeView';
 import { MarketsView } from './components/MarketsView';
 import { EarnView } from './components/EarnView';
 import { WalletView } from './components/WalletView';
 import { ProfileView } from './components/ProfileView';
 import { MiningBot } from './components/MiningBot';
+import { BottomNav } from './components/BottomNav';
 import { Footer } from './components/Footer';
-import { Terminal as TerminalIcon, CornerDownRight, Play, Cpu, Wallet, ShieldCheck, Heart } from 'lucide-react';
+import { Terminal as TerminalIcon, CornerDownRight } from 'lucide-react';
 
 interface TerminalLog {
   text: string;
@@ -17,14 +19,14 @@ interface TerminalLog {
 }
 
 function MainApp() {
-  const { user, activePlans, buyPlan, deposit, withdraw, triggerMiningPayout, miningBalance } = useApp();
-  const [currentTab, setCurrentTab] = useState<'markets' | 'earn' | 'wallet' | 'profile'>('markets');
+  const { user, activePlans, buyPlan, triggerMiningPayout, miningBalance } = useApp();
+  const [currentTab, setCurrentTab] = useState<'home' | 'markets' | 'earn' | 'wallet' | 'profile'>('home');
   const [authView, setAuthView] = useState<'login' | 'register' | null>(null);
 
   // Shell CLI States
   const [cmdInput, setCmdInput] = useState('');
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([
-    { text: "PROJECT X UNIX SYSTEM TERMINAL. TTY/0 READY.", type: "success" },
+    { text: "DODDOGE UNIX SYSTEM TERMINAL. TTY/0 READY.", type: "success" },
     { text: "TYPE 'help' TO VIEW COMPATIBLE SYSTEM COMMANDS.", type: "output" }
   ]);
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -39,7 +41,7 @@ function MainApp() {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
     if (ref) {
-      localStorage.setItem('projectx_pending_referral', ref);
+      localStorage.setItem('doddoge_pending_referral', ref);
     }
   }, []);
 
@@ -53,20 +55,21 @@ function MainApp() {
   // Handle CLI Command Execution
   const handleCommandSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cmdInput.trim()) return;
-
     const fullCmd = cmdInput.trim();
-    const args = fullCmd.toLowerCase().split(' ');
-    const command = args[0];
+    if (!fullCmd) return;
+
+    const args = fullCmd.split(/\s+/);
+    const command = args[0].toLowerCase();
 
     // Log the user's input
-    const newLogs: TerminalLog[] = [...terminalLogs, { text: `user@projectx:~$ ${fullCmd}`, type: 'input' }];
+    const newLogs: TerminalLog[] = [...terminalLogs, { text: `user@doddoge:~$ ${fullCmd}`, type: 'input' }];
 
     switch (command) {
       case 'help':
         newLogs.push(
           { text: "--- AVAILABLE UNIX TTY SYSTEM COMMANDS ---", type: 'success' },
           { text: "  help                     : Show compatible mainframe command sets.", type: 'output' },
+          { text: "  home                     : Route to main Dashboard and AI news hub.", type: 'output' },
           { text: "  markets                  : Route to Live Market stream telemetry.", type: 'output' },
           { text: "  earn                     : Route to Auto AI Trading yield portal.", type: 'output' },
           { text: "  wallet                   : Route to personal USDT funding and transaction ledgers.", type: 'output' },
@@ -78,6 +81,11 @@ function MainApp() {
           { text: "  harvest                  : Claim accumulated mining bot profits to wallet.", type: 'output' },
           { text: "-----------------------------------------", type: 'success' }
         );
+        break;
+
+      case 'home':
+        setCurrentTab('home');
+        newLogs.push({ text: "SYS_ROUTE: Loaded Home Dashboard interface.", type: 'success' });
         break;
 
       case 'markets':
@@ -181,7 +189,7 @@ function MainApp() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col pb-24">
         {user && user.isVerified ? (
           /* Logged In Dashboard View */
           <div className="max-w-7xl mx-auto px-4 py-6 w-full flex-1 space-y-6">
@@ -192,7 +200,7 @@ function MainApp() {
               <div className="bg-slate-950 border-b border-emerald-500/20 px-4 py-2 flex items-center justify-between text-[11px]">
                 <div className="flex items-center space-x-2">
                   <TerminalIcon className="w-4 h-4 text-emerald-500" />
-                  <span className="font-bold text-white uppercase tracking-wider">PROJECTX_SYSTEM_SHELL_TTY0</span>
+                  <span className="font-bold text-white uppercase tracking-wider">DODDOGE_SYSTEM_SHELL_TTY0</span>
                 </div>
                 <div className="flex items-center space-x-3 text-emerald-500/50">
                   <span>ACTIVE_TTY</span>
@@ -220,13 +228,13 @@ function MainApp() {
               {/* Command Prompt Form Input */}
               <form onSubmit={handleCommandSubmit} className="flex items-center bg-slate-950 px-4 py-2 text-xs">
                 <CornerDownRight className="w-4 h-4 text-emerald-500 mr-2 shrink-0" />
-                <span className="text-emerald-500/60 font-bold mr-1.5 select-none">user@projectx:~$</span>
+                <span className="text-emerald-500/60 font-bold mr-1.5 select-none">user@doddoge:~$</span>
                 <input
                   type="text"
-                  placeholder="type instruction (e.g. help, clear, markets, earn, cat plans.txt)..."
+                  placeholder="type instruction (e.g. help, clear, home, markets, earn)..."
                   value={cmdInput}
                   onChange={(e) => setCmdInput(e.target.value)}
-                  className="w-full bg-transparent text-white focus:outline-none placeholder-emerald-500/25 border-none select-all"
+                  className="w-full bg-transparent text-white focus:outline-none placeholder-emerald-500/25 border-none select-all font-mono"
                 />
               </form>
             </div>
@@ -238,6 +246,7 @@ function MainApp() {
                 <span>COM_LINK_SECURE</span>
               </div>
               <div className="p-6">
+                {currentTab === 'home' && <HomeView />}
                 {currentTab === 'markets' && <MarketsView />}
                 {currentTab === 'earn' && <EarnView />}
                 {currentTab === 'wallet' && <WalletView />}
@@ -254,6 +263,9 @@ function MainApp() {
 
       {/* Persistent Floating AI Mining Bot */}
       <MiningBot />
+
+      {/* Glowing Bottom Navigation Bar */}
+      <BottomNav currentTab={currentTab} setCurrentTab={setCurrentTab} />
 
       {/* Footer Area */}
       <Footer />

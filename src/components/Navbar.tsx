@@ -1,12 +1,12 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
-import { Globe, LogOut, Wallet, Terminal, Cpu, User as UserIcon } from 'lucide-react';
+import { Globe, LogOut, Wallet, User as UserIcon } from 'lucide-react';
 
 interface NavbarProps {
   onOpenAuth: (view: 'login' | 'register') => void;
-  currentTab: 'markets' | 'earn' | 'wallet' | 'profile';
-  setCurrentTab: (tab: 'markets' | 'earn' | 'wallet' | 'profile') => void;
+  currentTab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile';
+  setCurrentTab: (tab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile') => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurrentTab }) => {
@@ -36,68 +36,39 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
         {/* Left Side */}
         <div className="flex items-center space-x-6">
           <div 
-            onClick={() => { if (user) setCurrentTab('markets'); }}
+            onClick={() => { if (user) setCurrentTab('home'); }}
             className="flex items-center space-x-2 cursor-pointer group"
           >
-            <div className="p-1.5 bg-emerald-500 text-slate-950 font-bold text-sm tracking-widest rounded">
-              PX
-            </div>
+            <img 
+              src="https://iili.io/C1qgH3x.jpg" 
+              alt="DODDOGE Logo" 
+              className="w-8 h-8 rounded-full border border-emerald-500/30 object-cover"
+              referrerPolicy="no-referrer"
+            />
             <span className="font-display font-bold text-white tracking-widest text-base group-hover:text-emerald-400 transition-colors uppercase crt-flicker">
-              PROJECTX<span className="text-emerald-500">_CLI</span>
+              DODDOGE<span className="text-emerald-500">_CLI</span>
             </span>
           </div>
-
-          {/* Nav items only if logged in */}
-          {user && user.isVerified && (
-            <nav className="hidden md:flex space-x-1">
-              <button
-                onClick={() => setCurrentTab('markets')}
-                className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  currentTab === 'markets'
-                    ? 'bg-emerald-500 text-slate-950 border border-emerald-400'
-                    : 'text-emerald-500 hover:text-white hover:bg-slate-900/40'
-                }`}
-              >
-                <span className="flex items-center gap-1">
-                  <Terminal className="w-3.5 h-3.5" />
-                  {t.markets}
-                </span>
-              </button>
-              <button
-                onClick={() => setCurrentTab('earn')}
-                className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  currentTab === 'earn'
-                    ? 'bg-emerald-500 text-slate-950 border border-emerald-400'
-                    : 'text-emerald-500 hover:text-white hover:bg-slate-900/40'
-                }`}
-              >
-                <span className="flex items-center gap-1">
-                  <Cpu className="w-3.5 h-3.5" />
-                  {t.earn}
-                </span>
-              </button>
-            </nav>
-          )}
         </div>
 
         {/* Right Side */}
         <div className="flex items-center space-x-4">
           {/* Language Selector */}
           <div className="relative group">
-            <button className="flex items-center space-x-1 text-emerald-500/70 hover:text-emerald-400 px-2 py-1.5 rounded text-xs font-bold transition-colors">
+            <button className="flex items-center space-x-1 text-emerald-500/70 hover:text-emerald-400 px-2 py-1.5 rounded text-xs font-bold transition-colors cursor-pointer">
               <Globe className="w-3.5 h-3.5" />
               <span>{language.toUpperCase()}</span>
             </button>
             <div className="absolute right-0 top-full mt-1 bg-slate-900 border border-emerald-500/30 rounded shadow-xl py-1 hidden group-hover:block w-28 z-50">
               <button
                 onClick={() => setLanguage('en')}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-950 hover:text-emerald-400 transition-colors uppercase ${language === 'en' ? 'text-emerald-400 font-bold' : 'text-emerald-500/60'}`}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-950 hover:text-emerald-400 transition-colors uppercase cursor-pointer ${language === 'en' ? 'text-emerald-400 font-bold' : 'text-emerald-500/60'}`}
               >
                 ENGLISH
               </button>
               <button
                 onClick={() => setLanguage('es')}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-950 hover:text-emerald-400 transition-colors uppercase ${language === 'es' ? 'text-emerald-400 font-bold' : 'text-emerald-500/60'}`}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-950 hover:text-emerald-400 transition-colors uppercase cursor-pointer ${language === 'es' ? 'text-emerald-400 font-bold' : 'text-emerald-500/60'}`}
               >
                 ESPAÑOL
               </button>
@@ -125,6 +96,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
                 className={`p-1.5 rounded hover:bg-slate-900/40 text-emerald-500/70 hover:text-emerald-400 transition-colors cursor-pointer ${
                   currentTab === 'profile' ? 'bg-slate-900 text-emerald-400 border border-emerald-500/20' : ''
                 }`}
+                title={t.profile}
               >
                 <UserIcon className="w-4 h-4" />
               </button>
@@ -156,48 +128,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
           )}
         </div>
       </div>
-
-      {/* Mobile Navigation sub-rail for logged-in users */}
-      {user && user.isVerified && (
-        <div className="md:hidden border-t border-emerald-500/15 bg-slate-950 px-4 py-2 flex justify-around items-center text-[10px] font-bold">
-          <button
-            onClick={() => setCurrentTab('markets')}
-            className={`flex flex-col items-center gap-1 uppercase tracking-wider transition-all cursor-pointer ${
-              currentTab === 'markets' ? 'text-emerald-400' : 'text-emerald-500/40 hover:text-emerald-500/70'
-            }`}
-          >
-            <Terminal className="w-4 h-4" />
-            <span>{t.markets}</span>
-          </button>
-          <button
-            onClick={() => setCurrentTab('earn')}
-            className={`flex flex-col items-center gap-1 uppercase tracking-wider transition-all cursor-pointer ${
-              currentTab === 'earn' ? 'text-emerald-400' : 'text-emerald-500/40 hover:text-emerald-500/70'
-            }`}
-          >
-            <Cpu className="w-4 h-4" />
-            <span>{t.earn}</span>
-          </button>
-          <button
-            onClick={() => setCurrentTab('wallet')}
-            className={`flex flex-col items-center gap-1 uppercase tracking-wider transition-all cursor-pointer ${
-              currentTab === 'wallet' ? 'text-emerald-400' : 'text-emerald-500/40 hover:text-emerald-500/70'
-            }`}
-          >
-            <Wallet className="w-4 h-4" />
-            <span>{t.wallet.split(' ')[0]}</span>
-          </button>
-          <button
-            onClick={() => setCurrentTab('profile')}
-            className={`flex flex-col items-center gap-1 uppercase tracking-wider transition-all cursor-pointer ${
-              currentTab === 'profile' ? 'text-emerald-400' : 'text-emerald-500/40 hover:text-emerald-500/70'
-            }`}
-          >
-            <UserIcon className="w-4 h-4" />
-            <span>{t.profile}</span>
-          </button>
-        </div>
-      )}
     </header>
   );
 };

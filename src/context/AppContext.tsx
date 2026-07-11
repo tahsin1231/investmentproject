@@ -87,7 +87,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setTransactions(txsList);
           } else {
             // If Auth user exists but Firestore user is missing, initialize profile
-            const refCode = 'PX-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+            const refCode = 'DOGE-' + Math.random().toString(36).substring(2, 8).toUpperCase();
             const newUser: User = {
               id: fbUser.uid,
               email: fbUser.email || '',
@@ -96,7 +96,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               activeInvestments: 0,
               totalProfit: 0,
               referralCode: refCode,
-              referredBy: localStorage.getItem('projectx_pending_referral') || null,
+              referredBy: localStorage.getItem('doddoge_pending_referral') || null,
               referralsCount: 0,
               createdAt: new Date().toISOString()
             };
@@ -182,11 +182,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       const fbUser = userCred.user;
 
-      const refCode = 'PX-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const refCode = 'DOGE-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
       // Check if referral code is valid
       let referredBy: string | null = null;
-      const finalReferralCode = referralCode || localStorage.getItem('projectx_pending_referral') || null;
+      const finalReferralCode = referralCode || localStorage.getItem('doddoge_pending_referral') || null;
 
       if (finalReferralCode) {
         const usersRef = collection(db, 'users');
@@ -219,7 +219,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setUser(newUser);
 
       // Clean pending referral
-      localStorage.removeItem('projectx_pending_referral');
+      localStorage.removeItem('doddoge_pending_referral');
 
       return { success: true };
     } catch (err: any) {
@@ -286,11 +286,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const userSnap = await getDoc(userDocRef);
 
       if (!userSnap.exists()) {
-        const refCode = 'PX-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+        const refCode = 'DOGE-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
         // Check if referral code is valid
         let referredBy: string | null = null;
-        const finalReferralCode = referralCode || localStorage.getItem('projectx_pending_referral') || null;
+        const finalReferralCode = referralCode || localStorage.getItem('doddoge_pending_referral') || null;
 
         if (finalReferralCode) {
           const usersRef = collection(db, 'users');
@@ -341,7 +341,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       // Clean pending referral
-      localStorage.removeItem('projectx_pending_referral');
+      localStorage.removeItem('doddoge_pending_referral');
 
       return { success: true };
     } catch (err: any) {

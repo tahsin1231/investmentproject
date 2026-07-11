@@ -1,6 +1,6 @@
 {
-  "name": "Project X - AI Trading",
-  "description": "Premium stock analysis, real-time tracking, and automated AI trading simulation platform.",
+  "name": "DODDOGE",
+  "description": "DODDOGE - Institutional Grade Stock & Crypto Analytics and AI Mining System.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
