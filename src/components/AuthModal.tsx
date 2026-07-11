@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
-import { Mail, Key, ShieldCheck, HelpCircle, ArrowRight, UserPlus, LogIn, MailOpen } from 'lucide-react';
+import { Mail, Key, HelpCircle, ArrowRight } from 'lucide-react';
 
 interface AuthModalProps {
   view: 'login' | 'register' | null;
@@ -10,64 +10,69 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }) => {
-  const { register, login, verifyEmail, user, language } = useApp();
+  const { register, login, loginWithGoogle, language } = useApp();
   const t = translations[language];
 
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [refCode, setRefCode] = useState('');
-  const [password, setPassword] = useState(''); // Simulated password
   const [error, setError] = useState<string | null>(null);
-  
-  // Verification states
-  const [showMailSimulation, setShowMailSimulation] = useState(false);
-  const [verificationSuccess, setVerificationSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // Auto-fill referral code on mount or when view changes to register
+  useEffect(() => {
+    if (view === 'register') {
+      const params = new URLSearchParams(window.location.search);
+      const urlRef = params.get('ref');
+      const savedRef = urlRef || localStorage.getItem('projectx_pending_referral') || '';
+      if (savedRef) {
+        setRefCode(savedRef);
+      }
+    }
+  }, [view]);
 
   if (!view) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setLoading(true);
 
-    if (!email) {
-      setError('Please provide a valid email address');
+    if (!email || !password) {
+      setError('Please provide both email and password.');
+      setLoading(false);
       return;
     }
 
     if (view === 'register') {
-      const res = register(email, refCode || undefined);
+      const res = await register(email, password, refCode || undefined);
+      setLoading(false);
       if (res.success) {
-        // Trigger simulated verification email sequence
-        setShowMailSimulation(true);
+        onClose();
       } else {
         setError(res.error || 'Registration failed');
       }
     } else {
-      const res = login(email);
+      const res = await login(email, password);
+      setLoading(false);
       if (res.success) {
-        // Check if user is already verified
-        const currentUser = JSON.parse(localStorage.getItem('projectx_session_user') || '{}');
-        if (currentUser.isVerified) {
-          onClose();
-        } else {
-          setShowMailSimulation(true);
-        }
+        onClose();
       } else {
         setError(res.error || 'Login failed');
       }
     }
   };
 
-  const handleSimulateVerification = () => {
-    verifyEmail();
-    setVerificationSuccess(true);
-  };
-
-  const handleProceedToTerminal = () => {
-    setShowMailSimulation(false);
-    setVerificationSuccess(false);
-    onSetView('login');
-    setEmail('');
-    setRefCode('');
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setLoading(true);
+    const res = await loginWithGoogle(refCode || undefined);
+    setLoading(false);
+    if (res.success) {
+      onClose();
+    } else {
+      setError(res.error || 'Google Sign-In failed');
+    }
   };
 
   return (
@@ -85,169 +90,139 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
           [ESC]
         </button>
 
-        {!showMailSimulation ? (
-          <div className="p-8">
-            <div className="flex items-center space-x-2 mb-6">
-              <div className="p-1.5 bg-amber-500 text-slate-950 rounded-lg font-bold text-xs">
-                PX
+        <div className="p-8">
+          <div className="flex items-center space-x-2 mb-6">
+            <div className="p-1.5 bg-amber-500 text-slate-950 rounded-lg font-bold text-xs">
+              PX
+            </div>
+            <span className="font-mono text-xs text-amber-500 font-bold uppercase tracking-widest">
+              PROJECT X TERMINAL
+            </span>
+          </div>
+
+          <h2 className="text-2xl font-bold text-white tracking-tight mb-2">
+            {view === 'register' ? t.signUpTitle : t.login}
+          </h2>
+          <p className="text-slate-400 text-xs leading-relaxed mb-6">
+            {view === 'register' ? t.signUpSubtitle : 'Access your secure quant indicators, active miners, and premium telemetry charts.'}
+          </p>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs mb-4 font-mono">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                {t.emailLabel}
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="email"
+                  required
+                  disabled={loading}
+                  placeholder="name@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors"
+                />
               </div>
-              <span className="font-mono text-xs text-amber-500 font-bold uppercase tracking-widest">
-                PROJECT X TERMINAL
-              </span>
             </div>
 
-            <h2 className="text-2xl font-bold text-white tracking-tight mb-2">
-              {view === 'register' ? t.signUpTitle : t.login}
-            </h2>
-            <p className="text-slate-400 text-xs leading-relaxed mb-6">
-              {view === 'register' ? t.signUpSubtitle : 'Access your secure quant indicators, active miners, and premium telemetry charts.'}
-            </p>
+            <div>
+              <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                Password (Secured Session Pin)
+              </label>
+              <div className="relative">
+                <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="password"
+                  required
+                  disabled={loading}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
 
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs mb-4 font-mono">
-                {error}
+            {view === 'register' && (
+              <div>
+                <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                  {t.refLabel}
+                </label>
+                <input
+                  type="text"
+                  disabled={loading}
+                  placeholder="PX-XXXXXX"
+                  value={refCode}
+                  onChange={(e) => setRefCode(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 px-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors font-mono"
+                />
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
-                  {t.emailLabel}
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="email"
-                    required
-                    placeholder="name@company.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors"
-                  />
-                </div>
-              </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/50 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/10 hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 mt-2 cursor-pointer"
+            >
+              <span>{loading ? 'Processing...' : (view === 'register' ? t.submitSignUp : t.login)}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
 
-              <div>
-                <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
-                  Password (Secured Session Pin)
-                </label>
-                <div className="relative">
-                  <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors"
-                  />
-                </div>
-              </div>
-
-              {view === 'register' && (
-                <div>
-                  <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
-                    {t.refLabel}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="PX-XXXXXX"
-                    value={refCode}
-                    onChange={(e) => setRefCode(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 px-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors font-mono"
-                  />
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 px-4 rounded-xl shadow-lg shadow-amber-500/10 hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 mt-2 cursor-pointer"
-              >
-                <span>{view === 'register' ? t.submitSignUp : t.login}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <button
-                onClick={() => onSetView(view === 'register' ? 'login' : 'register')}
-                className="text-xs text-slate-400 hover:text-amber-400 transition-colors cursor-pointer"
-              >
-                {view === 'register' ? t.alreadyHaveAccount : t.dontHaveAccount}
-              </button>
+          {/* Divider */}
+          <div className="relative my-5">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-800"></div>
+            </div>
+            <div className="relative flex justify-center text-[10px] uppercase font-mono">
+              <span className="bg-slate-900 px-3 text-slate-500 font-bold tracking-wider">Or continue with</span>
             </div>
           </div>
-        ) : (
-          <div className="p-8">
-            {!verificationSuccess ? (
-              <div className="text-center">
-                <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
-                  <MailOpen className="w-8 h-8" />
-                </div>
 
-                <h3 className="text-xl font-bold text-white mb-2">
-                  {t.verificationSentTitle}
-                </h3>
-                <p className="text-slate-400 text-sm leading-relaxed mb-8">
-                  {t.verificationSentSubtitle}
-                </p>
+          {/* Google Sign-In Button */}
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className="w-full bg-slate-950 hover:bg-slate-800 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center gap-3 cursor-pointer"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path
+                fill="currentColor"
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              />
+              <path
+                fill="currentColor"
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              />
+              <path
+                fill="currentColor"
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+              />
+              <path
+                fill="currentColor"
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+              />
+            </svg>
+            <span>{view === 'register' ? 'Sign up with Google' : 'Sign in with Google'}</span>
+          </button>
 
-                {/* Simulated Email Payload Drawer */}
-                <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-left mb-8">
-                  <div className="flex items-center justify-between border-b border-slate-900 pb-2.5 mb-2.5 text-[10px] font-mono text-slate-500">
-                    <div>
-                      <span className="text-slate-400 font-semibold">FROM:</span> system@projectx.ai
-                    </div>
-                    <div>
-                      {new Date().toLocaleTimeString()}
-                    </div>
-                  </div>
-                  <div className="text-[10px] font-mono text-slate-400 mb-4">
-                    <span className="text-slate-500 font-semibold">TO:</span> {email}
-                    <br />
-                    <span className="text-slate-500 font-semibold">SUBJ:</span> Complete Your Profile Verification
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
-                    Click the button below to sign the cryptographic validation hash and register your account on the live stock analysis dashboard.
-                  </p>
-
-                  <button
-                    onClick={handleSimulateVerification}
-                    className="w-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-400 font-semibold text-xs py-3 px-4 rounded-lg flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Verify Profile Account</span>
-                  </button>
-                </div>
-
-                <div className="text-xs text-slate-500 flex items-center justify-center gap-1">
-                  <HelpCircle className="w-3.5 h-3.5" />
-                  <span>Simulated verification mail system is active</span>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <ShieldCheck className="w-8 h-8" />
-                </div>
-
-                <h3 className="text-xl font-bold text-white mb-2">
-                  {t.verificationSuccessTitle}
-                </h3>
-                <p className="text-slate-400 text-sm leading-relaxed mb-8">
-                  {t.verificationSuccessSubtitle}
-                </p>
-
-                <button
-                  onClick={handleProceedToTerminal}
-                  className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <span>{t.proceedToLogin}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => onSetView(view === 'register' ? 'login' : 'register')}
+              className="text-xs text-slate-400 hover:text-amber-400 transition-colors cursor-pointer"
+            >
+              {view === 'register' ? t.alreadyHaveAccount : t.dontHaveAccount}
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

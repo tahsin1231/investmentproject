@@ -6,7 +6,7 @@ export interface User {
   activeInvestments: number;
   totalProfit: number;
   referralCode: string;
-  referredBy?: string;
+  referredBy?: string | null;
   referralsCount: number;
   createdAt: string;
 }

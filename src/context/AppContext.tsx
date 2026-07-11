@@ -1,6 +1,26 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { User, ActivePlan, Transaction, StockData, Plan } from '../types';
+import { User, ActivePlan, Transaction, StockData } from '../types';
 import { INITIAL_STOCKS, updateStockPrices, PLANS } from '../utils/data';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  sendEmailVerification, 
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup
+} from 'firebase/auth';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  collection, 
+  getDocs, 
+  query, 
+  where 
+} from 'firebase/firestore';
+import { auth, db, OperationType, handleFirestoreError } from '../lib/firebase';
 
 interface AppContextType {
   user: User | null;
@@ -11,54 +31,125 @@ interface AppContextType {
   setSelectedStock: (stock: StockData) => void;
   language: 'en' | 'es';
   setLanguage: (lang: 'en' | 'es') => void;
-  register: (email: string, referralCode?: string) => { success: boolean; error?: string };
+  register: (email: string, password?: string, referralCode?: string) => Promise<{ success: boolean; error?: string }>;
   verifyEmail: () => void;
-  login: (email: string) => { success: boolean; error?: string };
+  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  loginWithGoogle: (referralCode?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  deposit: (amount: number, method: string) => void;
-  withdraw: (amount: number, address: string) => { success: boolean; error?: string };
-  buyPlan: (planId: string) => { success: boolean; error?: string };
+  deposit: (amount: number, method: string) => Promise<void>;
+  withdraw: (amount: number, address: string) => Promise<{ success: boolean; error?: string }>;
+  buyPlan: (planId: string) => Promise<{ success: boolean; error?: string }>;
   miningActive: boolean;
   setMiningActive: (active: boolean) => void;
   miningBalance: number;
-  triggerMiningPayout: () => void;
+  triggerMiningPayout: () => Promise<void>;
   referrals: { email: string; date: string; bonus: number }[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('projectx_session_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [activePlans, setActivePlans] = useState<ActivePlan[]>(() => {
-    const saved = localStorage.getItem('projectx_active_plans');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('projectx_transactions');
-    return saved ? JSON.parse(saved) : [];
-  });
-
+  const [user, setUser] = useState<User | null>(null);
+  const [activePlans, setActivePlans] = useState<ActivePlan[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stocks, setStocks] = useState<StockData[]>(INITIAL_STOCKS);
   const [selectedStock, setSelectedStock] = useState<StockData>(INITIAL_STOCKS[0]);
   const [language, setLanguage] = useState<'en' | 'es'>('en');
+  const [referrals, setReferrals] = useState<{ email: string; date: string; bonus: number }[]>([]);
 
-  // Mining Simulation states
+  // Mining simulation states
   const [miningActive, setMiningActive] = useState<boolean>(false);
   const [miningBalance, setMiningBalance] = useState<number>(0);
 
-  const miningIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Sync Auth State
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          const userDocRef = doc(db, 'users', fbUser.uid);
+          const userSnap = await getDoc(userDocRef);
+          if (userSnap.exists()) {
+            const userData = userSnap.data() as User;
+            // Synchronize verification in Firestore if it was false
+            if (!userData.isVerified) {
+              await updateDoc(userDocRef, { isVerified: true });
+              userData.isVerified = true;
+            }
+            setUser(userData);
+
+            // Load plans and transactions from user's subcollections
+            const plansSnap = await getDocs(collection(db, 'users', fbUser.uid, 'activePlans'));
+            const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
+            setActivePlans(plansList);
+
+            const txsSnap = await getDocs(collection(db, 'users', fbUser.uid, 'transactions'));
+            const txsList = txsSnap.docs.map(d => d.data() as Transaction);
+            setTransactions(txsList);
+          } else {
+            // If Auth user exists but Firestore user is missing, initialize profile
+            const refCode = 'PX-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+            const newUser: User = {
+              id: fbUser.uid,
+              email: fbUser.email || '',
+              isVerified: true,
+              balance: 0,
+              activeInvestments: 0,
+              totalProfit: 0,
+              referralCode: refCode,
+              referredBy: localStorage.getItem('projectx_pending_referral') || null,
+              referralsCount: 0,
+              createdAt: new Date().toISOString()
+            };
+            await setDoc(userDocRef, newUser);
+            setUser(newUser);
+            setActivePlans([]);
+            setTransactions([]);
+          }
+        } catch (error) {
+          console.error("Error fetching verified profile:", error);
+        }
+      } else {
+        setUser(null);
+        setActivePlans([]);
+        setTransactions([]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch referrals
+  useEffect(() => {
+    if (user) {
+      const fetchReferrals = async () => {
+        try {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('referredBy', '==', user.referralCode));
+          const querySnap = await getDocs(q);
+          const refs = querySnap.docs.map(doc => {
+            const d = doc.data();
+            return {
+              email: d.email,
+              date: d.createdAt ? new Date(d.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+              bonus: 2.0
+            };
+          });
+          setReferrals(refs);
+        } catch (error) {
+          console.error("Error fetching referrals:", error);
+        }
+      };
+      fetchReferrals();
+    } else {
+      setReferrals([]);
+    }
+  }, [user]);
 
   // Load and sync stocks update
   useEffect(() => {
     const interval = setInterval(() => {
       setStocks(prev => {
         const next = updateStockPrices(prev);
-        // Sync selected stock too
         const found = next.find(s => s.symbol === selectedStock.symbol);
         if (found) setSelectedStock(found);
         return next;
@@ -72,11 +163,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!user || activePlans.length === 0) return;
 
     const interval = setInterval(() => {
-      // Small simulated tick update for mining
       if (miningActive) {
-        // Calculate total daily yield of all active plans per second
         const totalDailyProfit = activePlans.reduce((sum, p) => sum + p.dailyProfit, 0);
-        // 1 day = 86400 seconds. Let's make the simulation run 100x faster for visual entertainment
+        // Make the simulation run 120x faster for user visual engagement
         const tickProfit = (totalDailyProfit / 86400) * 120; 
         setMiningBalance(prev => prev + tickProfit);
       }
@@ -85,139 +174,232 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(interval);
   }, [user, activePlans, miningActive]);
 
-  // Handle localstorage persist
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('projectx_session_user', JSON.stringify(user));
-      // Save to main user list too
-      const users = JSON.parse(localStorage.getItem('projectx_users') || '[]');
-      const index = users.findIndex((u: User) => u.id === user.id);
-      if (index > -1) {
-        users[index] = user;
-      } else {
-        users.push(user);
+  const register = async (email: string, password?: string, referralCode?: string) => {
+    try {
+      if (!password) {
+        return { success: false, error: 'Password is required' };
       }
-      localStorage.setItem('projectx_users', JSON.stringify(users));
-    } else {
-      localStorage.removeItem('projectx_session_user');
-    }
-  }, [user]);
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      const fbUser = userCred.user;
 
-  useEffect(() => {
-    localStorage.setItem('projectx_active_plans', JSON.stringify(activePlans));
-  }, [activePlans]);
+      const refCode = 'PX-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
-  useEffect(() => {
-    localStorage.setItem('projectx_transactions', JSON.stringify(transactions));
-  }, [transactions]);
+      // Check if referral code is valid
+      let referredBy: string | null = null;
+      const finalReferralCode = referralCode || localStorage.getItem('projectx_pending_referral') || null;
 
-  // Calculate referrals
-  const getReferrals = () => {
-    if (!user) return [];
-    const usersList: User[] = JSON.parse(localStorage.getItem('projectx_users') || '[]');
-    return usersList
-      .filter(u => u.referredBy === user.referralCode)
-      .map(u => ({
-        email: u.email,
-        date: new Date(u.createdAt).toLocaleDateString(),
-        bonus: 2.0 // standard registration simulated bonus or plan purchase bonus
-      }));
-  };
-
-  const register = (email: string, referralCode?: string) => {
-    const users: User[] = JSON.parse(localStorage.getItem('projectx_users') || '[]');
-    const exists = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (exists) {
-      return { success: false, error: 'Email already registered' };
-    }
-
-    const refCode = 'PX-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-    
-    // Check if referral code is valid
-    let referredBy: string | undefined = undefined;
-    if (referralCode) {
-      const referrer = users.find(u => u.referralCode === referralCode);
-      if (referrer) {
-        referredBy = referralCode;
-        // Credit reward or record referrer info
-        referrer.referralsCount = (referrer.referralsCount || 0) + 1;
-        // 20% bonus structure: we can give some bonus on active buy later
-        const updatedUsers = users.map(u => u.id === referrer.id ? referrer : u);
-        localStorage.setItem('projectx_users', JSON.stringify(updatedUsers));
+      if (finalReferralCode) {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('referralCode', '==', finalReferralCode));
+        const querySnap = await getDocs(q);
+        if (!querySnap.empty) {
+          referredBy = finalReferralCode;
+          const referrerDoc = querySnap.docs[0];
+          const referrerData = referrerDoc.data();
+          const newCount = (referrerData.referralsCount || 0) + 1;
+          await updateDoc(referrerDoc.ref, { referralsCount: newCount });
+        }
       }
+
+      const newUser: User = {
+        id: fbUser.uid,
+        email: email.toLowerCase(),
+        isVerified: true,
+        balance: 0,
+        activeInvestments: 0,
+        totalProfit: 0,
+        referralCode: refCode,
+        referredBy,
+        referralsCount: 0,
+        createdAt: new Date().toISOString()
+      };
+
+      // Set user profile in Firestore
+      await setDoc(doc(db, 'users', fbUser.uid), newUser);
+      setUser(newUser);
+
+      // Clean pending referral
+      localStorage.removeItem('projectx_pending_referral');
+
+      return { success: true };
+    } catch (err: any) {
+      let friendlyError = err.message;
+      if (err.code === 'auth/email-already-in-use') {
+        friendlyError = 'This email address is already in use.';
+      } else if (err.code === 'auth/weak-password') {
+        friendlyError = 'Password is too weak. Please use at least 6 characters.';
+      }
+      return { success: false, error: friendlyError };
     }
-
-    const newUser: User = {
-      id: Math.random().toString(36).substring(2, 9),
-      email: email.toLowerCase(),
-      isVerified: false,
-      balance: 0,
-      activeInvestments: 0,
-      totalProfit: 0,
-      referralCode: refCode,
-      referredBy,
-      referralsCount: 0,
-      createdAt: new Date().toISOString()
-    };
-
-    users.push(newUser);
-    localStorage.setItem('projectx_users', JSON.stringify(users));
-    setUser(newUser);
-    return { success: true };
   };
 
   const verifyEmail = () => {
-    if (!user) return;
-    const updated = { ...user, isVerified: true };
-    setUser(updated);
-  };
-
-  const login = (email: string) => {
-    const users: User[] = JSON.parse(localStorage.getItem('projectx_users') || '[]');
-    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (!found) {
-      // For ease of evaluation and professional fallback, if user enters the demo email or any new email, register them instantly
-      return register(email);
+    if (user) {
+      setUser(prev => prev ? { ...prev, isVerified: true } : null);
     }
-    
-    setUser(found);
-    return { success: true };
   };
 
-  const logout = () => {
-    setUser(null);
-    setActivePlans([]);
-    setTransactions([]);
-    setMiningActive(false);
-    setMiningBalance(0);
+  const login = async (email: string, password?: string) => {
+    try {
+      if (!password) {
+        return { success: false, error: 'Password is required' };
+      }
+      const userCred = await signInWithEmailAndPassword(auth, email, password);
+      const fbUser = userCred.user;
+
+      // Load profile
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const userSnap = await getDoc(userDocRef);
+      if (userSnap.exists()) {
+        const userData = userSnap.data() as User;
+        if (!userData.isVerified) {
+          await updateDoc(userDocRef, { isVerified: true });
+          userData.isVerified = true;
+        }
+        setUser(userData);
+
+        const plansSnap = await getDocs(collection(db, 'users', fbUser.uid, 'activePlans'));
+        const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
+        setActivePlans(plansList);
+
+        const txsSnap = await getDocs(collection(db, 'users', fbUser.uid, 'transactions'));
+        const txsList = txsSnap.docs.map(d => d.data() as Transaction);
+        setTransactions(txsList);
+      }
+      return { success: true };
+    } catch (err: any) {
+      let friendlyError = err.message;
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        friendlyError = 'Invalid email or password credentials.';
+      }
+      return { success: false, error: friendlyError };
+    }
   };
 
-  const deposit = (amount: number, method: string) => {
+  const loginWithGoogle = async (referralCode?: string) => {
+    try {
+      const provider = new GoogleAuthProvider();
+      const userCred = await signInWithPopup(auth, provider);
+      const fbUser = userCred.user;
+
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const userSnap = await getDoc(userDocRef);
+
+      if (!userSnap.exists()) {
+        const refCode = 'PX-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+
+        // Check if referral code is valid
+        let referredBy: string | null = null;
+        const finalReferralCode = referralCode || localStorage.getItem('projectx_pending_referral') || null;
+
+        if (finalReferralCode) {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('referralCode', '==', finalReferralCode));
+          const querySnap = await getDocs(q);
+          if (!querySnap.empty) {
+            referredBy = finalReferralCode;
+            const referrerDoc = querySnap.docs[0];
+            const referrerData = referrerDoc.data();
+            const newCount = (referrerData.referralsCount || 0) + 1;
+            await updateDoc(referrerDoc.ref, { referralsCount: newCount });
+          }
+        }
+
+        const newUser: User = {
+          id: fbUser.uid,
+          email: (fbUser.email || '').toLowerCase(),
+          isVerified: true,
+          balance: 0,
+          activeInvestments: 0,
+          totalProfit: 0,
+          referralCode: refCode,
+          referredBy,
+          referralsCount: 0,
+          createdAt: new Date().toISOString()
+        };
+
+        // Set user profile in Firestore
+        await setDoc(userDocRef, newUser);
+        setUser(newUser);
+        setActivePlans([]);
+        setTransactions([]);
+      } else {
+        const userData = userSnap.data() as User;
+        if (!userData.isVerified) {
+          await updateDoc(userDocRef, { isVerified: true });
+          userData.isVerified = true;
+        }
+        setUser(userData);
+
+        const plansSnap = await getDocs(collection(db, 'users', fbUser.uid, 'activePlans'));
+        const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
+        setActivePlans(plansList);
+
+        const txsSnap = await getDocs(collection(db, 'users', fbUser.uid, 'transactions'));
+        const txsList = txsSnap.docs.map(d => d.data() as Transaction);
+        setTransactions(txsList);
+      }
+
+      // Clean pending referral
+      localStorage.removeItem('projectx_pending_referral');
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("Google Sign-In Error:", err);
+      let friendlyError = err.message;
+      if (err.code === 'auth/popup-blocked') {
+        friendlyError = 'Pop-up blocked. Please enable pop-ups for this site to sign in with Google.';
+      } else if (err.code === 'auth/unauthorized-domain') {
+        friendlyError = 'This domain is not authorized in your Firebase console. Please add it to the authorized domains list.';
+      }
+      return { success: false, error: friendlyError };
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+      setActivePlans([]);
+      setTransactions([]);
+      setMiningActive(false);
+      setMiningBalance(0);
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
+
+  const deposit = async (amount: number, method: string) => {
     if (!user) return;
-    
+
     const newTx: Transaction = {
       id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
       type: 'deposit',
       amount,
-      status: 'completed', // Auto complete the deposit for ease of testing
+      status: 'completed',
       date: new Date().toLocaleString(),
       txHash: '0x' + Math.random().toString(16).substring(2, 18) + '...'
     };
 
-    setTransactions(prev => [newTx, ...prev]);
-    setUser(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        balance: Number((prev.balance + amount).toFixed(2))
-      };
-    });
+    try {
+      // Save transaction to subcollection
+      const txDocRef = doc(db, 'users', user.id, 'transactions', newTx.id);
+      await setDoc(txDocRef, newTx);
+
+      // Update balance
+      const newBalance = Number((user.balance + amount).toFixed(2));
+      await updateDoc(doc(db, 'users', user.id), { balance: newBalance });
+
+      // Synchronize states
+      setTransactions(prev => [newTx, ...prev]);
+      setUser(prev => prev ? { ...prev, balance: newBalance } : null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
+    }
   };
 
-  const withdraw = (amount: number, address: string) => {
-    if (!user) return { success: false, error: 'User not found' };
+  const withdraw = async (amount: number, address: string) => {
+    if (!user) return { success: false, error: 'User session not found' };
     if (user.balance < amount) {
       return { success: false, error: 'Insufficient balance' };
     }
@@ -226,24 +408,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
       type: 'withdraw',
       amount,
-      status: 'pending', // Pending withdrawal requires simulated approval or takes action
+      status: 'pending',
       date: new Date().toLocaleString(),
       txHash: address
     };
 
-    setTransactions(prev => [newTx, ...prev]);
-    setUser(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        balance: Number((prev.balance - amount).toFixed(2))
-      };
-    });
+    try {
+      // Save transaction to subcollection
+      const txDocRef = doc(db, 'users', user.id, 'transactions', newTx.id);
+      await setDoc(txDocRef, newTx);
 
-    return { success: true };
+      // Update balance
+      const newBalance = Number((user.balance - amount).toFixed(2));
+      await updateDoc(doc(db, 'users', user.id), { balance: newBalance });
+
+      // Synchronize states
+      setTransactions(prev => [newTx, ...prev]);
+      setUser(prev => prev ? { ...prev, balance: newBalance } : null);
+
+      return { success: true };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
+      return { success: false, error: 'Withdrawal failed. Database connection error.' };
+    }
   };
 
-  const buyPlan = (planId: string) => {
+  const buyPlan = async (planId: string) => {
     if (!user) return { success: false, error: 'User not logged in' };
     const plan = PLANS.find(p => p.id === planId);
     if (!plan) return { success: false, error: 'Plan not found' };
@@ -251,7 +441,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'Insufficient balance to purchase this plan. Please deposit more funds first.' };
     }
 
-    // Determine random daily profit between min and max
     const dailyProfit = Number((Math.random() * (plan.maxProfit - plan.minProfit) + plan.minProfit).toFixed(2));
 
     const newActivePlan: ActivePlan = {
@@ -267,7 +456,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'active'
     };
 
-    // record invest transaction
     const newTx: Transaction = {
       id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
       type: 'invest',
@@ -276,58 +464,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       date: new Date().toLocaleString()
     };
 
-    setActivePlans(prev => [...prev, newActivePlan]);
-    setTransactions(prev => [newTx, ...prev]);
-    
-    // Check if user was referred by someone to distribute 20% commission!
-    let updatedUserBalance = user.balance - plan.price;
-    if (user.referredBy) {
-      const users: User[] = JSON.parse(localStorage.getItem('projectx_users') || '[]');
-      const referrer = users.find(u => u.referralCode === user.referredBy);
-      if (referrer) {
-        const commission = Number((plan.price * 0.20).toFixed(2));
-        referrer.balance = Number((referrer.balance + commission).toFixed(2));
-        referrer.totalProfit = Number((referrer.totalProfit + commission).toFixed(2));
-        
-        // Save referrer transaction
-        const refTx: Transaction = {
-          id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
-          type: 'referral',
-          amount: commission,
-          status: 'completed',
-          date: new Date().toLocaleString(),
-          txHash: `Commission from PX-${user.email.substring(0, 3)}...`
-        };
+    try {
+      const userDocRef = doc(db, 'users', user.id);
 
-        // Persist referrer
-        const updatedUsers = users.map(u => u.id === referrer.id ? referrer : u);
-        localStorage.setItem('projectx_users', JSON.stringify(updatedUsers));
-        
-        // If referrer is the logged in user, update current session
-        if (referrer.id === user.id) {
-          updatedUserBalance += commission;
+      // Save plan to subcollection
+      const planDocRef = doc(db, 'users', user.id, 'activePlans', newActivePlan.id);
+      await setDoc(planDocRef, newActivePlan);
+
+      // Save transaction to subcollection
+      const txDocRef = doc(db, 'users', user.id, 'transactions', newTx.id);
+      await setDoc(txDocRef, newTx);
+
+      let updatedUserBalance = user.balance - plan.price;
+      let activeInvestmentsDelta = plan.price;
+
+      // Handle 20% Instant Referral Commission
+      if (user.referredBy) {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('referralCode', '==', user.referredBy));
+        const querySnap = await getDocs(q);
+
+        if (!querySnap.empty) {
+          const referrerDoc = querySnap.docs[0];
+          const referrerData = referrerDoc.data();
+          const commission = Number((plan.price * 0.20).toFixed(2));
+
+          const newRefBalance = Number((referrerData.balance + commission).toFixed(2));
+          const newRefProfit = Number((referrerData.totalProfit + commission).toFixed(2));
+
+          await updateDoc(referrerDoc.ref, {
+            balance: newRefBalance,
+            totalProfit: newRefProfit
+          });
+
+          // Register transaction for referrer
+          const refTx: Transaction = {
+            id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
+            type: 'referral',
+            amount: commission,
+            status: 'completed',
+            date: new Date().toLocaleString(),
+            txHash: `Commission from user invite`
+          };
+          await setDoc(doc(db, 'users', referrerDoc.id, 'transactions', refTx.id), refTx);
+
+          if (referrerDoc.id === user.id) {
+            updatedUserBalance += commission;
+          }
         }
       }
-    }
 
-    setUser(prev => {
-      if (!prev) return null;
-      return {
+      const finalBalance = Number(updatedUserBalance.toFixed(2));
+      const finalInvestments = Number((user.activeInvestments + activeInvestmentsDelta).toFixed(2));
+
+      await updateDoc(userDocRef, {
+        balance: finalBalance,
+        activeInvestments: finalInvestments
+      });
+
+      // Synchronize state
+      setActivePlans(prev => [...prev, newActivePlan]);
+      setTransactions(prev => [newTx, ...prev]);
+      setUser(prev => prev ? {
         ...prev,
-        balance: Number(updatedUserBalance.toFixed(2)),
-        activeInvestments: Number((prev.activeInvestments + plan.price).toFixed(2))
-      };
-    });
+        balance: finalBalance,
+        activeInvestments: finalInvestments
+      } : null);
 
-    return { success: true };
+      return { success: true };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
+      return { success: false, error: 'Subscription failed. Database connection error.' };
+    }
   };
 
-  const triggerMiningPayout = () => {
+  const triggerMiningPayout = async () => {
     if (!user || miningBalance <= 0) return;
-    
+
     const payoutAmount = Number(miningBalance.toFixed(4));
-    
-    // Create profit payout transaction
+
     const newTx: Transaction = {
       id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
       type: 'profit',
@@ -336,31 +551,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       date: new Date().toLocaleString()
     };
 
-    setTransactions(prev => [newTx, ...prev]);
-    setUser(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        balance: Number((prev.balance + payoutAmount).toFixed(2)),
-        totalProfit: Number((prev.totalProfit + payoutAmount).toFixed(2))
-      };
-    });
+    try {
+      const userDocRef = doc(db, 'users', user.id);
 
-    // Update the earned amount on active plans
-    setActivePlans(prev => prev.map(p => {
-      if (p.status === 'active') {
-        return {
-          ...p,
-          totalEarned: Number((p.totalEarned + (payoutAmount / prev.length)).toFixed(4))
-        };
+      // Save transaction to Firestore
+      const txDocRef = doc(db, 'users', user.id, 'transactions', newTx.id);
+      await setDoc(txDocRef, newTx);
+
+      const newBalance = Number((user.balance + payoutAmount).toFixed(2));
+      const newProfit = Number((user.totalProfit + payoutAmount).toFixed(2));
+
+      await updateDoc(userDocRef, {
+        balance: newBalance,
+        totalProfit: newProfit
+      });
+
+      // Update earned amount on active plans in database
+      const updatedPlans = activePlans.map(p => {
+        if (p.status === 'active') {
+          return {
+            ...p,
+            totalEarned: Number((p.totalEarned + (payoutAmount / activePlans.length)).toFixed(4))
+          };
+        }
+        return p;
+      });
+
+      for (const p of updatedPlans) {
+        const planDocRef = doc(db, 'users', user.id, 'activePlans', p.id);
+        await updateDoc(planDocRef, { totalEarned: p.totalEarned });
       }
-      return p;
-    }));
 
-    setMiningBalance(0);
+      // Synchronize states
+      setTransactions(prev => [newTx, ...prev]);
+      setUser(prev => prev ? {
+        ...prev,
+        balance: newBalance,
+        totalProfit: newProfit
+      } : null);
+      setActivePlans(updatedPlans);
+      setMiningBalance(0);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
+    }
   };
-
-  const referrals = getReferrals();
 
   return (
     <AppContext.Provider value={{
@@ -375,6 +609,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       register,
       verifyEmail,
       login,
+      loginWithGoogle,
       logout,
       deposit,
       withdraw,
