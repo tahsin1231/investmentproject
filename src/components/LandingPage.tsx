@@ -103,134 +103,107 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           </div>
         )}
 
-        {/* Live System Nodes List */}
+        {/* Live System Nodes and Real-Time Stock Telemetry Board */}
         {bootStep >= 7 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-fade-in">
-            {stocks.slice(0, 3).map(stock => (
-              <div 
-                key={stock.symbol}
-                className="border border-emerald-500/20 bg-slate-950/85 p-4 rounded-lg relative overflow-hidden"
-              >
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-[10px] text-emerald-500/50 uppercase">{stock.type}</span>
-                  <span className={`text-[10px] font-bold ${stock.changePercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {stock.changePercent >= 0 ? '▲' : '▼'} {stock.changePercent}%
+          <div className="space-y-6 animate-fade-in">
+            {/* Real-time Ticker tape header */}
+            <div className="border border-emerald-500/30 bg-slate-950/90 rounded-xl p-5 md:p-6 shadow-xl space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/20 pb-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Activity className="w-4 h-4 text-emerald-400 animate-pulse" />
+                    <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest font-mono">
+                      [REAL_TIME_ASSET_TELEMETRY] / [LIVE_ORDER_BOOKS_ACTIVE]
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-bold text-white uppercase tracking-tight font-mono">
+                    GLOBAL CRYPTO & CORPORATE ASSET STREAM
+                  </h2>
+                  <p className="text-emerald-500/60 text-xs mt-1 leading-relaxed uppercase">
+                    Live institutional-grade price indices and socket feedback channels. Simulated price feeds update automatically.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                  <span className="text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded">
+                    SOCKET: CONNECTED
                   </span>
                 </div>
-                <div className="flex justify-between items-baseline">
-                  <span className="font-bold text-white text-sm">{stock.symbol}</span>
-                  <span className="text-xs text-emerald-400">${stock.price.toFixed(2)}</span>
-                </div>
               </div>
-            ))}
-          </div>
-        )}
 
-        {/* System Investment Plan Matrix */}
-        {bootStep >= 7 && (
-          <div className="border border-emerald-500/30 bg-slate-950/90 rounded-xl p-5 md:p-6 shadow-xl space-y-6 animate-fade-in">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Coins className="w-5 h-5 text-emerald-400 animate-pulse" />
-                <span className="text-xs text-emerald-500 font-bold uppercase tracking-widest font-mono">
-                  [SYSTEM_INVESTMENT_PLAN_MATRIX] / [সিস্টেম ইনভেস্টমেন্ট প্ল্যান ম্যাট্রিক্স]
-                </span>
-              </div>
-              <h2 className="text-lg font-bold text-white uppercase tracking-tight">
-                {language === 'bn' ? 'এআই কোয়ান্টাম আর্নিং প্ল্যান এবং ইনভেস্টমেন্ট লেভেলসমূহ' : 'AI Quantum Earning Plans & Investment Levels'}
-              </h2>
-              <p className="text-emerald-500/70 text-xs mt-1.5 leading-relaxed uppercase">
-                {language === 'bn' 
-                  ? 'নিচে আমাদের প্রতিটি প্ল্যানের মূল্য এবং দৈনিক আনুমানিক ইনকামের তালিকা দেওয়া হলো। প্রফেশনাল অ্যাকাউন্টের মাধ্যমে যেকোনো প্ল্যানে ইনভেস্ট করে প্রতিদিন রিয়েল-টাইম আর্নিং সংগ্রহ করতে পারেন।' 
-                  : 'Below is the matrix of available subscription tiers, pricing, and estimated daily yields. Active contracts run for 30 days.'}
-              </p>
-            </div>
-
-            {/* Plans Table */}
-            <div className="overflow-x-auto border border-emerald-500/15 rounded-lg bg-slate-900/40">
-              <table className="w-full text-left text-xs border-collapse font-mono uppercase">
-                <thead>
-                  <tr className="bg-slate-950/80 text-emerald-500/60 border-b border-emerald-500/20 text-[10px] tracking-wider font-bold">
-                    <th className="py-3 px-4">{language === 'bn' ? 'লেভেল' : 'LEVEL_ID'}</th>
-                    <th className="py-3 px-4 text-center">{language === 'bn' ? 'ইনভেস্টমেন্ট মূল্য' : 'PRICE (USDT)'}</th>
-                    <th className="py-3 px-4 text-center">{language === 'bn' ? 'দৈনিক ইনকাম' : 'DAILY YIELD'}</th>
-                    <th className="py-3 px-4 text-center">{language === 'bn' ? 'মাসিক রিটার্ন' : '30-DAY TOTAL'}</th>
-                    <th className="py-3 px-4 text-right">{language === 'bn' ? 'অ্যাকশন' : 'STATUS'}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {PLANS.map((plan) => (
-                    <tr key={plan.id} className="border-b border-emerald-500/10 hover:bg-slate-900/80 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-white flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>L{plan.id} - {plan.name}</span>
-                      </td>
-                      <td className="py-3.5 px-4 text-center font-bold text-amber-500">${plan.price} USDT</td>
-                      <td className="py-3.5 px-4 text-center font-bold text-emerald-400">${plan.minProfit.toFixed(2)} - ${plan.maxProfit.toFixed(2)}</td>
-                      <td className="py-3.5 px-4 text-center text-emerald-300 font-semibold">${(plan.minProfit * 30).toFixed(2)} - ${(plan.maxProfit * 30).toFixed(2)}</td>
-                      <td className="py-3.5 px-4 text-right">
-                        <button 
-                          onClick={() => onOpenAuth('register')}
-                          className="bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 border border-emerald-500/30 text-emerald-400 font-bold px-3 py-1 rounded text-[10px] transition-all cursor-pointer inline-flex items-center gap-1 uppercase tracking-wider"
-                        >
-                          <span>{language === 'bn' ? 'ইনভেস্ট করুন' : 'DEVICES'}</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </button>
-                      </td>
+              {/* Dynamic Telemetry Table */}
+              <div className="overflow-x-auto border border-emerald-500/15 rounded-lg bg-slate-950/60">
+                <table className="w-full text-left text-xs border-collapse font-mono uppercase">
+                  <thead>
+                    <tr className="bg-slate-900/80 text-emerald-500/60 border-b border-emerald-500/20 text-[10px] tracking-wider font-bold">
+                      <th className="py-3.5 px-4">ASSET_SYMBOL</th>
+                      <th className="py-3.5 px-4">ASSET_NAME</th>
+                      <th className="py-3.5 px-4 text-right">MARKET_PRICE</th>
+                      <th className="py-3.5 px-4 text-right">PRICE_CHANGE</th>
+                      <th className="py-3.5 px-4 text-right">PERCENT_CHANGE</th>
+                      <th className="py-3.5 px-4 text-center">INDEX_FLOW</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Income and Execution explanation */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-              <div className="bg-slate-900/50 border border-emerald-500/15 rounded-lg p-4 space-y-2">
-                <h4 className="text-white text-xs font-bold uppercase flex items-center gap-1.5">
-                  <Wallet className="w-4 h-4 text-emerald-400" />
-                  <span>{language === 'bn' ? 'কিভাবে ইনভেস্ট ও ইনকাম করবেন:' : 'How to Invest & Earn:'}</span>
-                </h4>
-                <ul className="text-[11px] text-emerald-500/85 space-y-1.5 uppercase leading-relaxed list-inside list-decimal">
-                  <li>
-                    {language === 'bn' 
-                      ? 'ব্যালেন্স যুক্ত করুন: আপনার ওয়ালেট থেকে USDT (TRC20/ERC20) ডিপোজিট করুন।' 
-                      : 'Fund Your Balance: Deposit USDT using safe TRC20, ERC20 or native BTC/ETH.'}
-                  </li>
-                  <li>
-                    {language === 'bn' 
-                      ? 'লেভেল অ্যাক্টিভেট করুন: আপনার ব্যালেন্স অনুযায়ী L1 থেকে L7 যেকোনো লেভেলে ক্লিক করে ইনভেস্ট করুন।' 
-                      : 'Activate Contract: Choose from L1 to L7 according to your balance to deploy capital.'}
-                  </li>
-                  <li>
-                    {language === 'bn' 
-                      ? 'মাইনিং প্রফিট সংগ্রহ: স্বয়ংক্রিয় কোয়ান্টাম এআই বটের মাধ্যমে প্রতিদিন আর্নিং বা লাভ হবে।' 
-                      : 'Harvest Yields: Auto AI server mining works 24/7. Harvest accumulated yields anytime.'}
-                  </li>
-                </ul>
+                  </thead>
+                  <tbody>
+                    {stocks.map((stock) => {
+                      const isPositive = stock.changePercent >= 0;
+                      return (
+                        <tr 
+                          key={stock.symbol} 
+                          className="border-b border-emerald-500/10 hover:bg-slate-900/60 transition-colors duration-200"
+                        >
+                          <td className="py-3 px-4 font-bold text-white flex items-center gap-2">
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              {stock.symbol}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-emerald-500/80 font-medium">
+                            {stock.name}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold text-white">
+                            ${stock.price >= 100 
+                              ? stock.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
+                              : stock.price.toFixed(4)}
+                          </td>
+                          <td className={`py-3 px-4 text-right font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {isPositive ? '+' : ''}{stock.change.toFixed(2)}
+                          </td>
+                          <td className={`py-3 px-4 text-right font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {isPositive ? '▲' : '▼'} {Math.abs(stock.changePercent).toFixed(2)}%
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="inline-flex items-center gap-1.5 justify-center">
+                              <span className={`w-1.5 h-1.5 rounded-full ${isPositive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500 animate-pulse'}`} />
+                              <span className={`text-[10px] font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {isPositive ? 'BULLISH' : 'BEARISH'}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
 
-              <div className="bg-slate-900/50 border border-emerald-500/15 rounded-lg p-4 space-y-2">
-                <h4 className="text-white text-xs font-bold uppercase flex items-center gap-1.5">
-                  <HelpCircle className="w-4 h-4 text-emerald-400" />
-                  <span>{language === 'bn' ? 'গুরুত্বপূর্ণ নিয়মাবলী:' : 'Core Protocols & Rules:'}</span>
-                </h4>
-                <ul className="text-[11px] text-emerald-500/85 space-y-1.5 uppercase leading-relaxed list-inside list-disc">
-                  <li>
-                    {language === 'bn' 
-                      ? 'মেয়াদ: প্রতিটি ইনভেস্টমেন্ট চুক্তি ঠিক ৩০ দিন পর্যন্ত সক্রিয় থাকে।' 
-                      : 'Lock-in span: All active investment plan contracts run for exactly 30 days.'}
-                  </li>
-                  <li>
-                    {language === 'bn' 
-                      ? 'উইথড্র: প্রতিদিনের প্রফিট বা লাভ সাথে সাথে যেকোনো ক্রিপ্টো ওয়ালেটে উইথড্র করা যায়।' 
-                      : 'Instant Liquidation: Harvested profits and referral dividends have zero cashout delay.'}
-                  </li>
-                  <li>
-                    {language === 'bn' 
-                      ? 'রেফারেল বোনাস: আপনার লিংকের মাধ্যমে কেউ জয়েন করলে সাথে সাথে ২০% ইনস্ট্যান্ট বোনাস পাবেন।' 
-                      : 'Affiliate tier: Earn 20% instant credit from all direct referred activations.'}
-                  </li>
-                </ul>
+              {/* Extra Interactive Stocks Panel info */}
+              <div className="bg-slate-900/30 border border-emerald-500/15 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="space-y-1">
+                  <span className="block font-bold text-white uppercase">[INSTITUTIONAL STREAM PRESET]</span>
+                  <span className="block text-emerald-500/70 leading-relaxed uppercase">
+                    Our platform executes secure algorithmic analytics pipelines across tier-1 liquidity networks. Authenticate your session profile to establish sub-second telemetry dashboards and custom warning parameters.
+                  </span>
+                </div>
+                <div className="space-y-2 flex flex-col justify-center">
+                  <div className="flex items-center justify-between text-[11px] border-b border-emerald-500/10 pb-1.5">
+                    <span className="text-emerald-500/50">DATA_REDUNDANCY</span>
+                    <span className="font-bold text-emerald-400">99.999% HIGH AVAILABILITY</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-emerald-500/50">EXECUTION_LATENCY</span>
+                    <span className="font-bold text-emerald-400">&lt; 1.2MS VIA cPANEL MAIN NODE</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

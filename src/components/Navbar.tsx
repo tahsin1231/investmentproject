@@ -96,12 +96,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
                 ENGLISH
               </button>
               <button
-                onClick={() => setLanguage('bn')}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-950 hover:text-emerald-400 transition-colors uppercase ${language === 'bn' ? 'text-emerald-400 font-bold' : 'text-emerald-500/60'}`}
-              >
-                BENGALI
-              </button>
-              <button
                 onClick={() => setLanguage('es')}
                 className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-950 hover:text-emerald-400 transition-colors uppercase ${language === 'es' ? 'text-emerald-400 font-bold' : 'text-emerald-500/60'}`}
               >

@@ -9,8 +9,8 @@ interface AppContextType {
   stocks: StockData[];
   selectedStock: StockData;
   setSelectedStock: (stock: StockData) => void;
-  language: 'en' | 'es' | 'bn';
-  setLanguage: (lang: 'en' | 'es' | 'bn') => void;
+  language: 'en' | 'es';
+  setLanguage: (lang: 'en' | 'es') => void;
   register: (email: string, referralCode?: string) => { success: boolean; error?: string };
   verifyEmail: () => void;
   login: (email: string) => { success: boolean; error?: string };
@@ -45,7 +45,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [stocks, setStocks] = useState<StockData[]>(INITIAL_STOCKS);
   const [selectedStock, setSelectedStock] = useState<StockData>(INITIAL_STOCKS[0]);
-  const [language, setLanguage] = useState<'en' | 'es' | 'bn'>('en');
+  const [language, setLanguage] = useState<'en' | 'es'>('en');
 
   // Mining Simulation states
   const [miningActive, setMiningActive] = useState<boolean>(false);
