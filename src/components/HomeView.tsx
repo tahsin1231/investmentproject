@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Cpu, Newspaper, ArrowRight, Zap, RefreshCw, Radio } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface NewsItem {
   id: string;
@@ -17,6 +19,23 @@ export const HomeView: React.FC = () => {
   const [systemLoad, setSystemLoad] = useState(48.2);
   const [aiUptime, setAiUptime] = useState('99.982%');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [broadcastMessage, setBroadcastMessage] = useState<string>('');
+
+  // Fetch dynamic administrator announcement
+  useEffect(() => {
+    const fetchAnnouncement = async () => {
+      try {
+        const settingsRef = doc(db, 'settings', 'global');
+        const snap = await getDoc(settingsRef);
+        if (snap.exists() && snap.data().announcement) {
+          setBroadcastMessage(snap.data().announcement);
+        }
+      } catch (err) {
+        console.error('Error fetching broadcast announcement:', err);
+      }
+    };
+    fetchAnnouncement();
+  }, []);
 
   // Auto fluctuating load and status parameters to look dynamic
   useEffect(() => {
@@ -98,7 +117,11 @@ export const HomeView: React.FC = () => {
         <div className="overflow-hidden relative h-5 flex-1">
           <div className="absolute inset-0 flex items-center">
             <p className="text-xs text-white/95 truncate font-mono">
-              [SYSTEM_INSIGHT] Active AI nodes running model optimization. Active mining hashes: {(activePlans.length * 8.4 + 4.2).toFixed(2)} MH/s. Fully synchronized with smart contracts.
+              {broadcastMessage ? (
+                <span>[BROADCAST] {broadcastMessage}</span>
+              ) : (
+                <span>[SYSTEM_INSIGHT] Active AI nodes running model optimization. Active mining hashes: {(activePlans.length * 8.4 + 4.2).toFixed(2)} MH/s. Fully synchronized with smart contracts.</span>
+              )}
             </p>
           </div>
         </div>

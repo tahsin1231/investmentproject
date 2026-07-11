@@ -13,6 +13,8 @@ export interface User {
   lastName: string;
   username: string;
   phone?: string;
+  isBanned?: boolean;
+  banReason?: string;
 }
 
 export interface Plan {

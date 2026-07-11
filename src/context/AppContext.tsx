@@ -78,6 +78,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const userSnap = await getDoc(userDocRef);
           if (userSnap.exists()) {
             const userData = userSnap.data() as User;
+            if (userData.isBanned) {
+              await signOut(auth);
+              setUser(null);
+              setActivePlans([]);
+              setTransactions([]);
+              alert("Your account has been banned by the Administrator.");
+              return;
+            }
             // Synchronize verification in Firestore if it was false
             if (!userData.isVerified) {
               await updateDoc(userDocRef, { isVerified: true });
@@ -301,6 +309,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const userSnap = await getDoc(userDocRef);
       if (userSnap.exists()) {
         const userData = userSnap.data() as User;
+        if (userData.isBanned) {
+          await signOut(auth);
+          setUser(null);
+          return { success: false, error: 'Your account has been banned by the Administrator.' };
+        }
         if (!userData.isVerified) {
           await updateDoc(userDocRef, { isVerified: true });
           userData.isVerified = true;
@@ -384,6 +397,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setTransactions([]);
       } else {
         const userData = userSnap.data() as User;
+        if (userData.isBanned) {
+          await signOut(auth);
+          setUser(null);
+          return { success: false, error: 'Your account has been banned by the Administrator.' };
+        }
         if (!userData.isVerified) {
           await updateDoc(userDocRef, { isVerified: true });
           userData.isVerified = true;

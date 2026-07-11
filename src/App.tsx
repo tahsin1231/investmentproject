@@ -11,6 +11,7 @@ import { ProfileView } from './components/ProfileView';
 import { MiningBot } from './components/MiningBot';
 import { BottomNav } from './components/BottomNav';
 import { Footer } from './components/Footer';
+import { AdminPanel } from './components/AdminPanel';
 import { Terminal as TerminalIcon, CornerDownRight } from 'lucide-react';
 
 interface TerminalLog {
@@ -22,6 +23,7 @@ function MainApp() {
   const { user, activePlans, buyPlan, triggerMiningPayout, miningBalance } = useApp();
   const [currentTab, setCurrentTab] = useState<'home' | 'markets' | 'earn' | 'wallet' | 'profile'>('home');
   const [authView, setAuthView] = useState<'login' | 'register' | null>(null);
+  const [adminOpen, setAdminOpen] = useState(false);
 
   // Shell CLI States
   const [cmdInput, setCmdInput] = useState('');
@@ -35,6 +37,30 @@ function MainApp() {
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [terminalLogs]);
+
+  // Listen to /admin route or admin command
+  useEffect(() => {
+    const handleLocationCheck = () => {
+      const path = window.location.pathname;
+      const hash = window.location.hash;
+      if (
+        path === '/admin' || 
+        path.endsWith('/admin') || 
+        hash === '#/admin' || 
+        hash === '#admin'
+      ) {
+        setAdminOpen(true);
+      }
+    };
+    
+    handleLocationCheck();
+    window.addEventListener('popstate', handleLocationCheck);
+    window.addEventListener('hashchange', handleLocationCheck);
+    return () => {
+      window.removeEventListener('popstate', handleLocationCheck);
+      window.removeEventListener('hashchange', handleLocationCheck);
+    };
+  }, []);
 
   // Handle URL pending referrals
   useEffect(() => {
@@ -74,6 +100,7 @@ function MainApp() {
           { text: "  earn                     : Route to Auto AI Trading yield portal.", type: 'output' },
           { text: "  wallet                   : Route to personal USDT funding and transaction ledgers.", type: 'output' },
           { text: "  profile                  : Route to affiliate networking peer node.", type: 'output' },
+          { text: "  admin                    : Authenticate as Mainframe Admin.", type: 'output' },
           { text: "  clear                    : Reset active terminal screen buffer.", type: 'output' },
           { text: "  cat balance.txt          : Display available USDT ledger balance.", type: 'output' },
           { text: "  cat plans.txt            : Output all daily mining plans with daily yields.", type: 'output' },
@@ -81,6 +108,11 @@ function MainApp() {
           { text: "  harvest                  : Claim accumulated mining bot profits to wallet.", type: 'output' },
           { text: "-----------------------------------------", type: 'success' }
         );
+        break;
+
+      case 'admin':
+        setAdminOpen(true);
+        newLogs.push({ text: "SYS_ROUTE: Loaded Administrative Terminal override.", type: 'success' });
         break;
 
       case 'home':
@@ -174,6 +206,10 @@ function MainApp() {
     setTerminalLogs(newLogs);
     setCmdInput('');
   };
+
+  if (adminOpen) {
+    return <AdminPanel onClose={() => setAdminOpen(false)} />;
+  }
 
   return (
     <div className="bg-slate-950 text-emerald-400 min-h-screen flex flex-col font-mono selection:bg-emerald-500 selection:text-slate-950 crt relative overflow-hidden">
