@@ -45,8 +45,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
               className="w-8 h-8 rounded-full border border-emerald-500/30 object-cover"
               referrerPolicy="no-referrer"
             />
-            <span className="font-display font-bold text-white tracking-widest text-base group-hover:text-emerald-400 transition-colors uppercase crt-flicker">
-              DODDOGE<span className="text-emerald-500">_CLI</span>
+            <span className="font-display font-bold text-white tracking-wider xs:tracking-widest text-sm xs:text-base group-hover:text-emerald-400 transition-colors uppercase crt-flicker">
+              DODDOGE<span className="hidden xs:inline text-emerald-500">_CLI</span>
             </span>
           </div>
         </div>
@@ -76,11 +76,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
           </div>
 
           {user && user.isVerified ? (
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               {/* Wallet Button */}
               <button
                 onClick={() => setCurrentTab('wallet')}
-                className={`px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer uppercase ${
+                className={`px-2 py-1.5 xs:px-3 rounded text-[10px] xs:text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer uppercase ${
                   currentTab === 'wallet'
                     ? 'bg-emerald-500 text-slate-950'
                     : 'bg-slate-900 border border-emerald-500/20 text-emerald-400 hover:bg-slate-850'
@@ -90,10 +90,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
                 <span>${user.balance.toFixed(2)} USDT</span>
               </button>
 
-              {/* Profile button */}
+              {/* Profile button - Hidden on mobile as it's in the bottom bar */}
               <button
                 onClick={() => setCurrentTab('profile')}
-                className={`p-1.5 rounded hover:bg-slate-900/40 text-emerald-500/70 hover:text-emerald-400 transition-colors cursor-pointer ${
+                className={`hidden sm:inline-block p-1.5 rounded hover:bg-slate-900/40 text-emerald-500/70 hover:text-emerald-400 transition-colors cursor-pointer ${
                   currentTab === 'profile' ? 'bg-slate-900 text-emerald-400 border border-emerald-500/20' : ''
                 }`}
                 title={t.profile}
@@ -101,26 +101,26 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
                 <UserIcon className="w-4 h-4" />
               </button>
 
-              {/* Logout */}
+              {/* Logout - Hidden on mobile as it is added in the profile view */}
               <button
                 onClick={logout}
-                className="p-1.5 bg-slate-900 hover:bg-red-950/30 text-emerald-500/50 hover:text-red-400 rounded border border-emerald-500/15 hover:border-red-500/30 transition-all cursor-pointer"
+                className="hidden sm:inline-block p-1.5 bg-slate-900 hover:bg-red-950/30 text-emerald-500/50 hover:text-red-400 rounded border border-emerald-500/15 hover:border-red-500/30 transition-all cursor-pointer"
                 title={t.logout}
               >
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
           ) : (
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1 xs:space-x-2">
               <button
                 onClick={() => onOpenAuth('login')}
-                className="text-emerald-500/80 hover:text-emerald-400 font-bold text-xs py-2 px-3 transition-colors cursor-pointer uppercase"
+                className="text-emerald-500/80 hover:text-emerald-400 font-bold text-[10px] xs:text-xs py-2 px-1.5 xs:px-3 transition-colors cursor-pointer uppercase"
               >
                 {t.login}
               </button>
               <button
                 onClick={() => onOpenAuth('register')}
-                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2 px-4 rounded transition-all cursor-pointer uppercase border border-emerald-400"
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] xs:text-xs py-2 px-2.5 xs:px-4 rounded transition-all cursor-pointer uppercase border border-emerald-400"
               >
                 {t.createAccountFree}
               </button>

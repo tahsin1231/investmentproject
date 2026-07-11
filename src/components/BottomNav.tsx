@@ -20,7 +20,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab 
         {/* Home option */}
         <button
           onClick={() => setCurrentTab('home')}
-          className={`flex flex-col items-center gap-1.5 uppercase font-mono tracking-widest text-[10px] font-bold transition-all duration-200 relative px-3 py-1 cursor-pointer ${
+          className={`flex flex-col items-center gap-1 uppercase font-mono tracking-normal xs:tracking-wider sm:tracking-widest text-[9px] xs:text-[10px] font-bold transition-all duration-200 relative px-1 xs:px-3 py-1 cursor-pointer ${
             currentTab === 'home' ? 'text-emerald-400 scale-105' : 'text-emerald-500/40 hover:text-emerald-500/70'
           }`}
         >
@@ -34,7 +34,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab 
         {/* Markets Option */}
         <button
           onClick={() => setCurrentTab('markets')}
-          className={`flex flex-col items-center gap-1.5 uppercase font-mono tracking-widest text-[10px] font-bold transition-all duration-200 relative px-3 py-1 cursor-pointer ${
+          className={`flex flex-col items-center gap-1 uppercase font-mono tracking-normal xs:tracking-wider sm:tracking-widest text-[9px] xs:text-[10px] font-bold transition-all duration-200 relative px-1 xs:px-3 py-1 cursor-pointer ${
             currentTab === 'markets' ? 'text-emerald-400 scale-105' : 'text-emerald-500/40 hover:text-emerald-500/70'
           }`}
         >
@@ -48,7 +48,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab 
         {/* Earn Option */}
         <button
           onClick={() => setCurrentTab('earn')}
-          className={`flex flex-col items-center gap-1.5 uppercase font-mono tracking-widest text-[10px] font-bold transition-all duration-200 relative px-3 py-1 cursor-pointer ${
+          className={`flex flex-col items-center gap-1 uppercase font-mono tracking-normal xs:tracking-wider sm:tracking-widest text-[9px] xs:text-[10px] font-bold transition-all duration-200 relative px-1 xs:px-3 py-1 cursor-pointer ${
             currentTab === 'earn' ? 'text-emerald-400 scale-105' : 'text-emerald-500/40 hover:text-emerald-500/70'
           }`}
         >
@@ -62,7 +62,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab 
         {/* Wallet Option */}
         <button
           onClick={() => setCurrentTab('wallet')}
-          className={`flex flex-col items-center gap-1.5 uppercase font-mono tracking-widest text-[10px] font-bold transition-all duration-200 relative px-3 py-1 cursor-pointer ${
+          className={`flex flex-col items-center gap-1 uppercase font-mono tracking-normal xs:tracking-wider sm:tracking-widest text-[9px] xs:text-[10px] font-bold transition-all duration-200 relative px-1 xs:px-3 py-1 cursor-pointer ${
             currentTab === 'wallet' ? 'text-emerald-400 scale-105' : 'text-emerald-500/40 hover:text-emerald-500/70'
           }`}
         >
@@ -76,7 +76,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab 
         {/* Profile Option */}
         <button
           onClick={() => setCurrentTab('profile')}
-          className={`flex flex-col items-center gap-1.5 uppercase font-mono tracking-widest text-[10px] font-bold transition-all duration-200 relative px-3 py-1 cursor-pointer ${
+          className={`flex flex-col items-center gap-1 uppercase font-mono tracking-normal xs:tracking-wider sm:tracking-widest text-[9px] xs:text-[10px] font-bold transition-all duration-200 relative px-1 xs:px-3 py-1 cursor-pointer ${
             currentTab === 'profile' ? 'text-emerald-400 scale-105' : 'text-emerald-500/40 hover:text-emerald-500/70'
           }`}
         >

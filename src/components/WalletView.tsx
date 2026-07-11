@@ -114,7 +114,7 @@ export const WalletView: React.FC = () => {
       <div className="lg:col-span-8 bg-slate-950 border border-emerald-500/30 rounded-xl p-5 shadow-lg shadow-emerald-950/10">
         
         {/* Sub Navigation */}
-        <div className="flex border-b border-emerald-500/20 pb-3 mb-5 space-x-2">
+        <div className="flex flex-wrap gap-2 border-b border-emerald-500/20 pb-3 mb-5">
           <button
             onClick={() => { setActiveSubTab('deposit'); setWithdrawSuccess(false); setWithdrawError(null); }}
             className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer ${
@@ -292,17 +292,17 @@ export const WalletView: React.FC = () => {
                 <table className="w-full text-left text-[10px] border-collapse uppercase">
                   <thead>
                     <tr className="text-emerald-500/50 border-b border-emerald-500/20 pb-2 text-[9px] tracking-wider">
-                      <th className="py-2">TX_ID</th>
+                      <th className="py-2 hidden sm:table-cell">TX_ID</th>
                       <th className="py-2">TYPE</th>
                       <th className="py-2 text-right">VOLUME</th>
                       <th className="py-2">STATUS</th>
-                      <th className="py-2">DATETIME</th>
+                      <th className="py-2 hidden sm:table-cell">DATETIME</th>
                     </tr>
                   </thead>
                   <tbody>
                     {transactions.map((tx) => (
                       <tr key={tx.id} className="border-b border-emerald-500/10 hover:bg-slate-900/40 text-emerald-400/80">
-                        <td className="py-2 font-semibold text-emerald-400">0x{tx.id.slice(0, 8)}</td>
+                        <td className="py-2 font-semibold text-emerald-400 hidden sm:table-cell">0x{tx.id.slice(0, 8)}</td>
                         <td className="py-2">
                           <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold ${
                             tx.type === 'deposit' ? 'bg-emerald-500/20 text-emerald-300' :
@@ -319,11 +319,11 @@ export const WalletView: React.FC = () => {
                         </td>
                         <td className="py-2">
                           <span className="flex items-center gap-1 text-[9px] text-emerald-300">
-                            <Clock className="w-3 h-3 text-emerald-400" />
-                            <span>{tx.status}</span>
+                             <Clock className="w-3 h-3 text-emerald-400" />
+                             <span>{tx.status}</span>
                           </span>
                         </td>
-                        <td className="py-2 text-emerald-500/40">{tx.date}</td>
+                        <td className="py-2 text-emerald-500/40 hidden sm:table-cell">{tx.date}</td>
                       </tr>
                     ))}
                   </tbody>

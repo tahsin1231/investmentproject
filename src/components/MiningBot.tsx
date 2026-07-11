@@ -40,10 +40,10 @@ export const MiningBot: React.FC = () => {
   return (
     <>
       {/* Floating Bot Icon Trigger */}
-      <div className="fixed bottom-6 right-6 z-40 font-mono">
+      <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40 font-mono">
         <button
           onClick={() => setIsOpen(true)}
-          className="relative p-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-full shadow-2xl shadow-emerald-500/30 border border-emerald-300 hover:scale-110 active:scale-95 transition-all cursor-pointer animate-bounce"
+          className="relative p-3 sm:p-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-full shadow-2xl shadow-emerald-500/30 border border-emerald-300 hover:scale-110 active:scale-95 transition-all cursor-pointer animate-bounce"
         >
           {/* Pulse notification dot */}
           <span className="absolute top-0 right-0 flex h-3 w-3">

@@ -137,11 +137,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                   <thead>
                     <tr className="bg-slate-900/80 text-emerald-500/60 border-b border-emerald-500/20 text-[10px] tracking-wider font-bold">
                       <th className="py-3.5 px-4">ASSET_SYMBOL</th>
-                      <th className="py-3.5 px-4">ASSET_NAME</th>
+                      <th className="py-3.5 px-4 hidden sm:table-cell">ASSET_NAME</th>
                       <th className="py-3.5 px-4 text-right">MARKET_PRICE</th>
-                      <th className="py-3.5 px-4 text-right">PRICE_CHANGE</th>
+                      <th className="py-3.5 px-4 text-right hidden md:table-cell">PRICE_CHANGE</th>
                       <th className="py-3.5 px-4 text-right">PERCENT_CHANGE</th>
-                      <th className="py-3.5 px-4 text-center">INDEX_FLOW</th>
+                      <th className="py-3.5 px-4 text-center hidden sm:table-cell">INDEX_FLOW</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -157,7 +157,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                               {stock.symbol}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-emerald-500/80 font-medium">
+                          <td className="py-3 px-4 text-emerald-500/80 font-medium hidden sm:table-cell">
                             {stock.name}
                           </td>
                           <td className="py-3 px-4 text-right font-bold text-white">
@@ -165,13 +165,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                               ? stock.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
                               : stock.price.toFixed(4)}
                           </td>
-                          <td className={`py-3 px-4 text-right font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                          <td className={`py-3 px-4 text-right font-bold hidden md:table-cell ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
                             {isPositive ? '+' : ''}{stock.change.toFixed(2)}
                           </td>
                           <td className={`py-3 px-4 text-right font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
                             {isPositive ? '▲' : '▼'} {Math.abs(stock.changePercent).toFixed(2)}%
                           </td>
-                          <td className="py-3 px-4 text-center">
+                          <td className="py-3 px-4 text-center hidden sm:table-cell">
                             <div className="inline-flex items-center gap-1.5 justify-center">
                               <span className={`w-1.5 h-1.5 rounded-full ${isPositive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500 animate-pulse'}`} />
                               <span className={`text-[10px] font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>

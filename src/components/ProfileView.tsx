@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
-import { ShieldCheck, Share2, Copy, Check, Users, HelpCircle, Award, Terminal } from 'lucide-react';
+import { ShieldCheck, Share2, Copy, Check, Users, HelpCircle, Award, Terminal, LogOut } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
-  const { user, referrals, language } = useApp();
+  const { user, referrals, language, logout } = useApp();
   const t = translations[language];
 
   const [copiedLink, setCopiedLink] = useState(false);
@@ -49,6 +49,14 @@ export const ProfileView: React.FC = () => {
             <span className="text-emerald-500/55 uppercase">ESTABLISHED</span>
             <span className="text-emerald-500/50">{new Date(user.createdAt).toLocaleDateString()}</span>
           </div>
+
+          <button
+            onClick={logout}
+            className="w-full mt-4 bg-slate-900 hover:bg-red-950/20 text-emerald-500/60 hover:text-red-400 border border-emerald-500/10 hover:border-red-500/30 rounded py-2 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>{t.logout}</span>
+          </button>
         </div>
       </div>
 
