@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../lib/firebase';
-import { User, ActivePlan, Transaction } from '../types';
+import { User, ActivePlan, Transaction, Plan } from '../types';
 import { PLANS } from '../utils/data';
 import { 
   collection, 
@@ -10,7 +10,8 @@ import {
   setDoc, 
   getDoc,
   query,
-  where
+  where,
+  deleteDoc
 } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { 
@@ -67,7 +68,18 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [selectedUserPlans, setSelectedUserPlans] = useState<ActivePlan[]>([]);
   const [selectedUserTxs, setSelectedUserTxs] = useState<Transaction[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'users' | 'mining' | 'promos' | 'system'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'mining' | 'promos' | 'system' | 'plans'>('users');
+
+  // Dynamic plans states
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [newPlanId, setNewPlanId] = useState('');
+  const [newPlanName, setNewPlanName] = useState('');
+  const [newPlanPrice, setNewPlanPrice] = useState('');
+  const [newPlanMinProfit, setNewPlanMinProfit] = useState('');
+  const [newPlanMaxProfit, setNewPlanMaxProfit] = useState('');
+  const [newPlanDuration, setNewPlanDuration] = useState('');
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
 
   // Actions forms states
   const [balanceAmount, setBalanceAmount] = useState('');
@@ -107,6 +119,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         fetchUsers();
         fetchPromoCodes();
         fetchGlobalSettings();
+        fetchPlans();
         addAuditLog('Authorized Session', 'System Mainframe');
       }
     };
@@ -166,6 +179,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       fetchUsers();
       fetchPromoCodes();
       fetchGlobalSettings();
+      fetchPlans();
       addAuditLog('Successful Mainframe Login', 'admin@gmail.com');
     } catch (err: any) {
       console.error(err);
@@ -218,6 +232,84 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       }
     } catch (err) {
       console.error('Error fetching global settings:', err);
+    }
+  };
+
+  // Fetch all investment plans
+  const fetchPlans = async () => {
+    setLoadingPlans(true);
+    try {
+      const snap = await getDocs(collection(db, 'plans'));
+      const list = snap.docs.map(d => d.data() as Plan);
+      list.sort((a, b) => Number(a.id) - Number(b.id) || a.price - b.price);
+      setPlans(list);
+    } catch (err) {
+      console.error('Error fetching plans:', err);
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
+  // Create Investment Plan
+  const handleCreatePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlanId || !newPlanName || !newPlanPrice || !newPlanMinProfit || !newPlanMaxProfit || !newPlanDuration) {
+      alert('All plan configuration parameters must be specified.');
+      return;
+    }
+    try {
+      const plan: Plan = {
+        id: newPlanId.trim(),
+        name: newPlanName.trim(),
+        price: parseFloat(newPlanPrice),
+        minProfit: parseFloat(newPlanMinProfit),
+        maxProfit: parseFloat(newPlanMaxProfit),
+        durationDays: parseInt(newPlanDuration)
+      };
+      
+      await setDoc(doc(db, 'plans', plan.id), plan);
+      addAuditLog(`Created Investment Plan ${plan.name}`, plan.id);
+      alert(`Plan ${plan.name} initialized successfully!`);
+      
+      // Reset inputs
+      setNewPlanId('');
+      setNewPlanName('');
+      setNewPlanPrice('');
+      setNewPlanMinProfit('');
+      setNewPlanMaxProfit('');
+      setNewPlanDuration('');
+      
+      fetchPlans();
+    } catch (err: any) {
+      alert('Failed to construct plan: ' + err.message);
+    }
+  };
+
+  // Update Investment Plan
+  const handleUpdatePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPlan) return;
+    try {
+      await setDoc(doc(db, 'plans', editingPlan.id), editingPlan);
+      addAuditLog(`Updated Plan ${editingPlan.name}`, editingPlan.id);
+      alert(`Plan ${editingPlan.name} modified successfully!`);
+      setEditingPlan(null);
+      fetchPlans();
+    } catch (err: any) {
+      alert('Failed to update plan: ' + err.message);
+    }
+  };
+
+  // Delete/Terminate Investment Plan
+  const handleDeletePlan = async (planId: string, planName: string) => {
+    if (!window.confirm(`Are you sure you want to terminate plan [${planName}]?`)) return;
+    try {
+      await deleteDoc(doc(db, 'plans', planId));
+      addAuditLog(`Terminated Plan ${planName}`, planId);
+      alert(`Plan ${planName} terminated.`);
+      fetchPlans();
+    } catch (err: any) {
+      alert('Failed to delete plan: ' + err.message);
     }
   };
 
@@ -710,6 +802,18 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             >
               <Settings className="w-4 h-4" />
               <span>System Command</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('plans')}
+              className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2.5 ${
+                activeTab === 'plans'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/10'
+                  : 'text-emerald-500/70 hover:bg-slate-900 hover:text-emerald-400'
+              }`}
+            >
+              <Sliders className="w-4 h-4" />
+              <span>Plan Configurator</span>
             </button>
           </div>
 
@@ -1439,6 +1543,174 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                   </>
                 )}
               </button>
+            </div>
+          )}
+
+          {/* TAB 5: INVESTMENT PLANS CONFIGURATION (CRUD) */}
+          {activeTab === 'plans' && (
+            <div className="border border-emerald-500/20 bg-slate-950/80 rounded-xl p-5 space-y-6">
+              <div className="flex justify-between items-center border-b border-emerald-500/10 pb-3">
+                <div>
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider">INVESTMENT CHANNELS MANAGEMENT</h2>
+                  <p className="text-[10px] text-emerald-500/40 uppercase mt-0.5">Add, edit, or terminate investment plans directly on the live database</p>
+                </div>
+                <Sliders className="w-6 h-6 text-emerald-400" />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left side: Create/Edit Form */}
+                <div className="lg:col-span-5 bg-slate-950/90 p-4 border border-emerald-500/10 rounded-xl space-y-4">
+                  <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">
+                    {editingPlan ? 'EDIT INVESTMENT PLAN' : 'CREATE NEW INVESTMENT PLAN'}
+                  </h3>
+
+                  <form onSubmit={editingPlan ? handleUpdatePlan : handleCreatePlan} className="space-y-3 font-mono text-xs text-white">
+                    <div>
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">PLAN ID (MUST BE UNIQUE)</label>
+                      <input
+                        type="text"
+                        disabled={!!editingPlan}
+                        placeholder="e.g. 5"
+                        value={editingPlan ? editingPlan.id : newPlanId}
+                        onChange={(e) => setNewPlanId(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-700 disabled:opacity-50 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">PLAN NAME</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. AI QUANTUM HIGH"
+                        value={editingPlan ? editingPlan.name : newPlanName}
+                        onChange={(e) => editingPlan ? setEditingPlan({...editingPlan, name: e.target.value}) : setNewPlanName(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-700 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">PRICE (USDT)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="e.g. 100"
+                        value={editingPlan ? editingPlan.price : newPlanPrice}
+                        onChange={(e) => editingPlan ? setEditingPlan({...editingPlan, price: parseFloat(e.target.value) || 0}) : setNewPlanPrice(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-700 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[8px] text-slate-500 uppercase mb-1">MIN DAILY YIELD ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="e.g. 2.5"
+                          value={editingPlan ? editingPlan.minProfit : newPlanMinProfit}
+                          onChange={(e) => editingPlan ? setEditingPlan({...editingPlan, minProfit: parseFloat(e.target.value) || 0}) : setNewPlanMinProfit(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-700 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] text-slate-500 uppercase mb-1">MAX DAILY YIELD ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="e.g. 5.0"
+                          value={editingPlan ? editingPlan.maxProfit : newPlanMaxProfit}
+                          onChange={(e) => editingPlan ? setEditingPlan({...editingPlan, maxProfit: parseFloat(e.target.value) || 0}) : setNewPlanMaxProfit(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-700 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">DURATION (DAYS)</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 30"
+                        value={editingPlan ? editingPlan.durationDays : newPlanDuration}
+                        onChange={(e) => editingPlan ? setEditingPlan({...editingPlan, durationDays: parseInt(e.target.value) || 0}) : setNewPlanDuration(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-700 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex gap-2">
+                      {editingPlan && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingPlan(null)}
+                          className="w-1/3 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-white font-bold py-2 px-3 rounded-lg text-xs uppercase"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        type="submit"
+                        className={`font-bold py-2 px-3 rounded-lg text-xs uppercase tracking-wider transition-all cursor-pointer flex-1 flex items-center justify-center gap-1.5 ${
+                          editingPlan 
+                            ? 'bg-amber-500 hover:bg-amber-400 border border-amber-300 text-slate-950'
+                            : 'bg-emerald-500 hover:bg-emerald-400 border border-emerald-300 text-slate-950'
+                        }`}
+                      >
+                        {editingPlan ? 'Save Changes' : 'Initialize Plan'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Right side: Plans List */}
+                <div className="lg:col-span-7 space-y-3">
+                  <h3 className="text-[10px] font-bold text-emerald-500/40 uppercase tracking-widest">
+                    ACTIVE PLANS REGISTRY
+                  </h3>
+
+                  <div className="space-y-2 max-h-[480px] overflow-y-auto scrollbar pr-1">
+                    {loadingPlans ? (
+                      <div className="text-emerald-500/60 text-center py-16 text-xs uppercase font-mono">
+                        <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-emerald-400" />
+                        QUERYING PLANS LEDGER...
+                      </div>
+                    ) : plans.length === 0 ? (
+                      <div className="text-slate-600 text-center py-16 text-xs italic bg-slate-950 border border-slate-900 rounded-xl">
+                        No active investment channels configured yet.
+                      </div>
+                    ) : (
+                      plans.map((p) => (
+                        <div key={p.id} className="bg-slate-950 p-4 border border-emerald-500/5 hover:border-emerald-500/10 rounded-xl flex items-center justify-between font-mono">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-white uppercase">{p.name}</span>
+                              <span className="text-[8px] bg-slate-900 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded">ID: {p.id}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[9px] text-slate-500">
+                              <span>Price: <strong className="text-white">${p.price} USDT</strong></span>
+                              <span>Duration: <strong className="text-white">{p.durationDays} Days</strong></span>
+                              <span className="col-span-2">Daily Yield: <strong className="text-emerald-400">${p.minProfit} - ${p.maxProfit} USDT</strong></span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setEditingPlan(p)}
+                              className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/20 rounded text-[9px] font-bold text-amber-400 transition-all uppercase cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeletePlan(p.id, p.name)}
+                              className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 rounded text-[9px] font-bold text-red-400 transition-all uppercase cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

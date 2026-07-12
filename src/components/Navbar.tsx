@@ -42,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
             <img 
               src="https://iili.io/C1qgH3x.jpg" 
               alt="DODDOGE Logo" 
-              className="w-8 h-8 rounded-full border border-emerald-500/30 object-cover"
+              className="w-11 h-11 rounded-full border border-emerald-500/40 object-cover shadow-[0_0_8px_rgba(16,185,129,0.2)]"
               referrerPolicy="no-referrer"
             />
             <span className="font-display font-bold text-white tracking-wider xs:tracking-widest text-sm xs:text-base group-hover:text-emerald-400 transition-colors uppercase crt-flicker">

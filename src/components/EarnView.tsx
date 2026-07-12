@@ -1,26 +1,30 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
-import { PLANS } from '../utils/data';
 import { Cpu, Terminal, Shield, Play, HelpCircle, Activity, AlertCircle } from 'lucide-react';
 
 export const EarnView: React.FC = () => {
-  const { user, activePlans, buyPlan, language } = useApp();
+  const { user, activePlans, buyPlan, language, plans } = useApp();
   const t = translations[language];
 
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [purchaseSuccess, setPurchaseSuccess] = useState<string | null>(null);
 
-  const handleSubscribe = (planId: string) => {
+  const handleSubscribe = async (planId: string) => {
     setPurchaseError(null);
     setPurchaseSuccess(null);
     
-    const result = buyPlan(planId);
-    if (result.success) {
-      setPurchaseSuccess(`CONTRACT DEPLOYMENT SUCCESSFUL: AI Quantum node initialized successfully.`);
-      setTimeout(() => setPurchaseSuccess(null), 5000);
-    } else {
-      setPurchaseError(result.error || 'Subscription failed');
+    try {
+      const result = await buyPlan(planId);
+      if (result.success) {
+        setPurchaseSuccess(`CONTRACT DEPLOYMENT SUCCESSFUL: AI Quantum node initialized successfully.`);
+        setTimeout(() => setPurchaseSuccess(null), 5000);
+      } else {
+        setPurchaseError(result.error || 'Subscription failed');
+        setTimeout(() => setPurchaseError(null), 7000);
+      }
+    } catch (err: any) {
+      setPurchaseError(err.message || 'Subscription failed');
       setTimeout(() => setPurchaseError(null), 7000);
     }
   };
@@ -144,7 +148,7 @@ export const EarnView: React.FC = () => {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {PLANS.map((plan) => {
+          {plans.map((plan) => {
             const hasSufficient = (user?.balance || 0) >= plan.price;
 
             return (

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { User, ActivePlan, Transaction, StockData } from '../types';
+import { User, ActivePlan, Transaction, StockData, Plan } from '../types';
 import { INITIAL_STOCKS, updateStockPrices, PLANS } from '../utils/data';
 import { 
   createUserWithEmailAndPassword, 
@@ -18,7 +18,8 @@ import {
   collection, 
   getDocs, 
   query, 
-  where 
+  where,
+  onSnapshot
 } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from '../lib/firebase';
 
@@ -52,6 +53,8 @@ interface AppContextType {
   miningBalance: number;
   triggerMiningPayout: () => Promise<void>;
   referrals: { email: string; date: string; bonus: number }[];
+  maintenanceMode: boolean;
+  plans: Plan[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -64,10 +67,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedStock, setSelectedStock] = useState<StockData>(INITIAL_STOCKS[0]);
   const [language, setLanguage] = useState<'en' | 'es'>('en');
   const [referrals, setReferrals] = useState<{ email: string; date: string; bonus: number }[]>([]);
+  const [maintenanceMode, setMaintenanceMode] = useState<boolean>(false);
+  const [plans, setPlans] = useState<Plan[]>([]);
 
   // Mining simulation states
   const [miningActive, setMiningActive] = useState<boolean>(false);
   const [miningBalance, setMiningBalance] = useState<number>(0);
+
+  // Sync Global Settings
+  useEffect(() => {
+    const settingsRef = doc(db, 'settings', 'global');
+    const unsubscribe = onSnapshot(settingsRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setMaintenanceMode(!!data.maintenanceMode);
+      }
+    }, (err) => {
+      console.error('Error listening to global config:', err);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync Investment Plans with seeding on empty
+  useEffect(() => {
+    const plansRef = collection(db, 'plans');
+    const unsubscribe = onSnapshot(plansRef, async (snap) => {
+      if (snap.empty) {
+        // Seed default plans if collection is empty
+        try {
+          for (const p of PLANS) {
+            await setDoc(doc(db, 'plans', p.id), p);
+          }
+        } catch (err) {
+          console.error('Error seeding plans:', err);
+        }
+      } else {
+        const list = snap.docs.map(d => d.data() as Plan);
+        // Sort by ID or price
+        list.sort((a, b) => Number(a.id) - Number(b.id) || a.price - b.price);
+        setPlans(list);
+      }
+    }, (err) => {
+      console.error('Error listening to plans:', err);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Calculate offline hourly accumulated profit
+  const calculateInitialMiningBalance = (plansList: ActivePlan[]) => {
+    let accumulated = 0;
+    const now = new Date();
+    plansList.forEach(p => {
+      if (p.status === 'active') {
+        const lastCollected = p.lastCollectedAt ? new Date(p.lastCollectedAt) : new Date(p.startDate);
+        const elapsedMs = now.getTime() - lastCollected.getTime();
+        const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60)); // Whole hours passed
+        if (elapsedHours > 0) {
+          accumulated += (p.dailyProfit / 24) * elapsedHours;
+        }
+      }
+    });
+    return accumulated;
+  };
 
   // Sync Auth State
   useEffect(() => {
@@ -97,6 +158,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const plansSnap = await getDocs(collection(db, 'users', fbUser.uid, 'activePlans'));
             const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
             setActivePlans(plansList);
+
+            // Set initial balance including offline hourly accumulated profit
+            const offlineProfit = calculateInitialMiningBalance(plansList);
+            setMiningBalance(offlineProfit);
 
             const txsSnap = await getDocs(collection(db, 'users', fbUser.uid, 'transactions'));
             const txsList = txsSnap.docs.map(d => d.data() as Transaction);
@@ -324,6 +389,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
         setActivePlans(plansList);
 
+        // Set initial balance including offline hourly accumulated profit
+        const offlineProfit = calculateInitialMiningBalance(plansList);
+        setMiningBalance(offlineProfit);
+
         const txsSnap = await getDocs(collection(db, 'users', fbUser.uid, 'transactions'));
         const txsList = txsSnap.docs.map(d => d.data() as Transaction);
         setTransactions(txsList);
@@ -411,6 +480,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const plansSnap = await getDocs(collection(db, 'users', fbUser.uid, 'activePlans'));
         const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
         setActivePlans(plansList);
+
+        // Set initial balance including offline hourly accumulated profit
+        const offlineProfit = calculateInitialMiningBalance(plansList);
+        setMiningBalance(offlineProfit);
 
         const txsSnap = await getDocs(collection(db, 'users', fbUser.uid, 'transactions'));
         const txsList = txsSnap.docs.map(d => d.data() as Transaction);
@@ -512,7 +585,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const buyPlan = async (planId: string) => {
     if (!user) return { success: false, error: 'User not logged in' };
-    const plan = PLANS.find(p => p.id === planId);
+    const plan = plans.find(p => p.id === planId);
     if (!plan) return { success: false, error: 'Plan not found' };
     if (user.balance < plan.price) {
       return { success: false, error: 'Insufficient balance to purchase this plan. Please deposit more funds first.' };
@@ -648,7 +721,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (p.status === 'active') {
           return {
             ...p,
-            totalEarned: Number((p.totalEarned + (payoutAmount / activePlans.length)).toFixed(4))
+            totalEarned: Number((p.totalEarned + (payoutAmount / activePlans.length)).toFixed(4)),
+            lastCollectedAt: new Date().toISOString()
           };
         }
         return p;
@@ -656,7 +730,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       for (const p of updatedPlans) {
         const planDocRef = doc(db, 'users', user.id, 'activePlans', p.id);
-        await updateDoc(planDocRef, { totalEarned: p.totalEarned });
+        await updateDoc(planDocRef, { 
+          totalEarned: p.totalEarned,
+          lastCollectedAt: p.lastCollectedAt
+        });
       }
 
       // Synchronize states
@@ -695,7 +772,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setMiningActive,
       miningBalance,
       triggerMiningPayout,
-      referrals
+      referrals,
+      maintenanceMode,
+      plans
     }}>
       {children}
     </AppContext.Provider>

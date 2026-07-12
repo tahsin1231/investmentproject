@@ -15,25 +15,45 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'admin@gmail.com';
+    }
+
+    // Plans Rules
+    match /plans/{planId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Settings Rules
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Promo Codes Rules
+    match /promo_codes/{codeId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // User Profile Document Rules
     match /users/{userId} {
       // Allow user to fetch or modify their own account profile
       allow get: if isSignedIn();
-      allow list: if false; // Block all query scraping and listing
-      allow create, update, delete: if isOwner(userId);
+      allow list: if isAdmin(); // Admin can list users
+      allow create, update, delete: if isOwner(userId) || isAdmin();
 
       // Active Plans Subcollection Rules
       match /activePlans/{planId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
       }
 
       // Transactions Subcollection Rules
       match /transactions/{txId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
       }
     }
   }

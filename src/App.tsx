@@ -20,7 +20,7 @@ interface TerminalLog {
 }
 
 function MainApp() {
-  const { user, activePlans, buyPlan, triggerMiningPayout, miningBalance } = useApp();
+  const { user, activePlans, buyPlan, triggerMiningPayout, miningBalance, maintenanceMode } = useApp();
   const [currentTab, setCurrentTab] = useState<'home' | 'markets' | 'earn' | 'wallet' | 'profile'>('home');
   const [authView, setAuthView] = useState<'login' | 'register' | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -212,6 +212,52 @@ function MainApp() {
 
   if (adminOpen) {
     return <AdminPanel onClose={() => setAdminOpen(false)} />;
+  }
+
+  const isAdminSession = user && user.email === 'admin@gmail.com';
+  if (maintenanceMode && !isAdminSession) {
+    return (
+      <div className="bg-slate-950 text-emerald-400 min-h-screen flex flex-col font-mono selection:bg-emerald-500 selection:text-slate-950 crt relative overflow-hidden items-center justify-center p-4">
+        <div className="absolute inset-x-0 top-0 h-[2px] bg-red-500/10 shadow-[0_0_10px_#ef4444] animate-[pulse_2s_infinite] pointer-events-none z-50" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.04)_0,transparent_100%)] pointer-events-none" />
+        <div className="w-full max-w-lg border border-red-500/30 rounded-2xl bg-slate-950/95 p-6 sm:p-8 shadow-2xl relative overflow-hidden text-center space-y-6">
+          <div className="absolute inset-x-0 top-0 h-[1px] bg-red-500/20 shadow-[0_0_5px_rgba(239,68,68,0.5)] animate-pulse" />
+          <div className="flex flex-col items-center">
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 mb-3 animate-pulse text-2xl">
+              ⚠️
+            </div>
+            <h1 className="text-xl font-bold uppercase tracking-widest text-white">System Under Maintenance</h1>
+            <p className="text-[10px] text-red-500/60 uppercase mt-1 font-mono">DODDOGE_CLI Node Lock Active</p>
+          </div>
+          <p className="text-xs text-emerald-500/80 uppercase leading-relaxed max-w-md mx-auto">
+            The core AI mining mainframe is currently undergoing scheduled optimization upgrades. Node communication and wallet integrations are temporarily offline to preserve ledger integrity.
+          </p>
+          <div className="bg-slate-900/50 border border-red-500/10 rounded-xl p-4 text-[10px] text-left space-y-2 uppercase text-slate-500 font-mono">
+            <div className="flex justify-between border-b border-slate-900 pb-1.5">
+              <span>Status</span>
+              <span className="text-red-400 font-bold animate-pulse">Offline / Maintenance</span>
+            </div>
+            <div className="flex justify-between border-b border-slate-900 pb-1.5">
+              <span>Est. Downtime</span>
+              <span className="text-emerald-400 font-bold">~ 45 minutes</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Protocol</span>
+              <span className="text-white">DODDOGE v11.8 SECUR_GUARD</span>
+            </div>
+          </div>
+          <div className="text-[10px] text-emerald-500/35 uppercase flex justify-between items-center pt-2">
+            <span>SiteChai Node Security</span>
+            <button 
+              onClick={() => setAdminOpen(true)}
+              className="text-slate-600 hover:text-emerald-400 font-bold transition-all cursor-pointer underline font-mono"
+            >
+              Admin Login Secure Port
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

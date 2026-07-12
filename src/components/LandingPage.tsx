@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
-import { PLANS } from '../utils/data';
 import { Terminal, Shield, Cpu, Activity, Play, ArrowRight, CornerDownRight, Coins, Wallet, Layers, HelpCircle } from 'lucide-react';
 
 interface LandingPageProps {
