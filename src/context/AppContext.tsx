@@ -68,6 +68,8 @@ interface AppContextType {
   updateWithdrawalLimits: (minW: number, maxW: number, monthlyW: number, dailyW: number) => Promise<void>;
   referralCommissionRate: number;
   updateReferralCommissionRate: (rate: number) => Promise<void>;
+  withdrawalsEnabled: boolean;
+  updateWithdrawalsEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -89,6 +91,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [monthlyWithdrawalLimit, setMonthlyWithdrawalLimit] = useState<number>(5000.00);
   const [dailyWithdrawalLimit, setDailyWithdrawalLimit] = useState<number>(1000.00);
   const [referralCommissionRate, setReferralCommissionRate] = useState<number>(20);
+  const [withdrawalsEnabled, setWithdrawalsEnabled] = useState<boolean>(true);
 
   // Mining simulation states
   const [miningActive, setMiningActive] = useState<boolean>(false);
@@ -113,7 +116,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     plansList.forEach(p => {
       if (p.status === 'active') {
         const lastCollected = p.lastCollectedAt ? new Date(p.lastCollectedAt) : new Date(p.startDate);
-        const elapsedMs = now.getTime() - lastCollected.getTime();
+        const limitDate = new Date(p.endDate) < now ? new Date(p.endDate) : now;
+        const elapsedMs = limitDate.getTime() - lastCollected.getTime();
         const elapsedSeconds = Math.max(0, elapsedMs / 1000);
         if (elapsedSeconds > 0) {
           const liveDaily = getLiveDailyProfit(p, masterPlans);
@@ -171,6 +175,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setMonthlyWithdrawalLimit(typeof data.monthlyWithdrawalLimit === 'number' ? data.monthlyWithdrawalLimit : 5000.00);
         setDailyWithdrawalLimit(typeof data.dailyWithdrawalLimit === 'number' ? data.dailyWithdrawalLimit : 1000.00);
         setReferralCommissionRate(typeof data.referralCommissionRate === 'number' ? data.referralCommissionRate : 20);
+        setWithdrawalsEnabled(data.withdrawalsEnabled !== false);
       } else {
         // Create settings doc if it does not exist
         try {
@@ -178,6 +183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             oxapayApiKey: 'HLSOHL-M4XCBM-MXMW4B-0BD5YD', 
             oxapayPayoutApiKey: 'HLSOHL-M4XCBM-MXMW4B-0BD5YD', 
             maintenanceMode: false,
+            withdrawalsEnabled: true,
             minWithdrawal: 5.00,
             maxWithdrawal: 1000.00,
             monthlyWithdrawalLimit: 5000.00,
@@ -194,6 +200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setMonthlyWithdrawalLimit(5000.00);
         setDailyWithdrawalLimit(1000.00);
         setReferralCommissionRate(20);
+        setWithdrawalsEnabled(true);
       }
     }, (err) => {
       console.error('Error listening to global config:', err);
@@ -389,13 +396,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [activePlans]);
 
+  // Auto-expire plans whose lock time has passed
+  useEffect(() => {
+    if (!user || activePlans.length === 0) return;
+    
+    const checkExpiredPlans = async () => {
+      const now = new Date();
+      const expiredPlansToUpdate = activePlans.filter(p => p.status === 'active' && new Date(p.endDate) <= now);
+      
+      if (expiredPlansToUpdate.length > 0) {
+        try {
+          let investmentsToSubtract = 0;
+          
+          for (const p of expiredPlansToUpdate) {
+            // Update status to 'expired' in user's activePlans subcollection
+            const planDocRef = doc(db, 'users', user.id, 'activePlans', p.id);
+            await updateDoc(planDocRef, { status: 'expired' });
+            investmentsToSubtract += p.price;
+          }
+          
+          // Decrement activeInvestments from user profile
+          const userDocRef = doc(db, 'users', user.id);
+          const newActiveInvestments = Math.max(0, Number((user.activeInvestments - investmentsToSubtract).toFixed(2)));
+          await updateDoc(userDocRef, { activeInvestments: newActiveInvestments });
+          
+          // Update local state
+          setActivePlans(prev => prev.map(p => {
+            if (expiredPlansToUpdate.some(ep => ep.id === p.id)) {
+              return { ...p, status: 'expired' };
+            }
+            return p;
+          }));
+          
+          setUser(prev => prev ? { ...prev, activeInvestments: newActiveInvestments } : null);
+          console.log(`Auto-expired ${expiredPlansToUpdate.length} plans. Subtracted $${investmentsToSubtract} from activeInvestments.`);
+        } catch (e) {
+          console.error("Error auto-expiring plans:", e);
+        }
+      }
+    };
+    
+    checkExpiredPlans();
+    const interval = setInterval(checkExpiredPlans, 10000);
+    return () => clearInterval(interval);
+  }, [user, activePlans]);
+
   // Run auto accumulation of plan profits
   useEffect(() => {
     if (!user || activePlans.length === 0) return;
 
     const interval = setInterval(() => {
       if (miningActive) {
-        const totalDailyProfit = activePlans.reduce((sum, p) => sum + getLiveDailyProfit(p, plans), 0);
+        const totalDailyProfit = activePlans
+          .filter(p => p.status === 'active' && new Date(p.endDate) > new Date())
+          .reduce((sum, p) => sum + getLiveDailyProfit(p, plans), 0);
         // Make the simulation run at exact 24-hour speed rate as requested
         const tickProfit = totalDailyProfit / 86400; 
         setMiningBalance(prev => prev + tickProfit);
@@ -831,8 +885,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateWithdrawalsEnabled = async (enabled: boolean) => {
+    try {
+      const settingsRef = doc(db, 'settings', 'global');
+      await setDoc(settingsRef, { withdrawalsEnabled: enabled }, { merge: true });
+      setWithdrawalsEnabled(enabled);
+    } catch (err) {
+      console.error('Error updating withdrawals enabled:', err);
+      throw err;
+    }
+  };
+
   const withdraw = async (amount: number, address: string) => {
     if (!user) return { success: false, error: 'User session not found' };
+    
+    if (!withdrawalsEnabled) {
+      return { success: false, error: 'Withdrawal gateway is currently offline for system maintenance. Please try again later.' };
+    }
+
     if (user.balance < amount) {
       return { success: false, error: 'Insufficient balance' };
     }
@@ -891,36 +961,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const newTx: Transaction = {
-      id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
-      type: 'withdraw',
-      amount, // Total gross amount deducted from user balance
-      status: 'pending',
-      date: new Date().toLocaleString(),
-      txHash: address,
-      address: address, // Set both so legacy and new structures read it
-      fee,
-      netAmount,
-      timestamp: Date.now()
-    };
-
+    // Trigger OxaPay Auto Payout
     try {
-      // Save transaction to subcollection
-      const txDocRef = doc(db, 'users', user.id, 'transactions', newTx.id);
-      await setDoc(txDocRef, newTx);
+      const payoutResponse = await fetch('/api/oxapay/payout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          apiKey: oxapayPayoutApiKey,
+          address: address,
+          amount: netAmount
+        })
+      });
 
-      // Update balance
-      const newBalance = Number((user.balance - amount).toFixed(2));
-      await updateDoc(doc(db, 'users', user.id), { balance: newBalance });
+      const resData = await payoutResponse.json();
 
-      // Synchronize states
-      setTransactions(prev => [newTx, ...prev]);
-      setUser(prev => prev ? { ...prev, balance: newBalance } : null);
+      if (resData.status === 200 || resData.status === '200' || resData.status === 'success') {
+        const trackId = resData.trackId || resData.track_id || (resData.data && (resData.data.trackId || resData.data.track_id)) || '';
+        const payoutStatus = resData.payoutStatus || resData.status || (resData.data && resData.data.status) || 'success';
 
-      return { success: true };
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
-      return { success: false, error: 'Withdrawal failed. Database connection error.' };
+        const newTx: Transaction = {
+          id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
+          type: 'withdraw',
+          amount, // Total gross amount deducted from user balance
+          status: 'completed', // Immediately completed on success!
+          date: new Date().toLocaleString(),
+          txHash: address,
+          address: address, // Set both so legacy and new structures read it
+          fee,
+          netAmount,
+          timestamp: Date.now(),
+          payoutTrackId: String(trackId),
+          payoutStatus: String(payoutStatus)
+        };
+
+        // Save transaction to subcollection
+        const txDocRef = doc(db, 'users', user.id, 'transactions', newTx.id);
+        await setDoc(txDocRef, newTx);
+
+        // Update balance
+        const newBalance = Number((user.balance - amount).toFixed(2));
+        await updateDoc(doc(db, 'users', user.id), { balance: newBalance });
+
+        // Synchronize states
+        setTransactions(prev => [newTx, ...prev]);
+        setUser(prev => prev ? { ...prev, balance: newBalance } : null);
+
+        return { success: true };
+      } else {
+        const errorMsg = resData.message || (resData.error && resData.error.message) || 'Unknown OxaPay error';
+        return { success: false, error: `OxaPay Payout Failed: ${errorMsg}. Your balance was not deducted.` };
+      }
+    } catch (payoutErr: any) {
+      console.error("Auto payout network exception:", payoutErr);
+      return { success: false, error: `Failed to communicate with OxaPay: ${payoutErr.message}. Your balance was not deducted.` };
     }
   };
 
@@ -1134,7 +1229,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       dailyWithdrawalLimit,
       updateWithdrawalLimits,
       referralCommissionRate,
-      updateReferralCommissionRate
+      updateReferralCommissionRate,
+      withdrawalsEnabled,
+      updateWithdrawalsEnabled
     }}>
       {children}
     </AppContext.Provider>

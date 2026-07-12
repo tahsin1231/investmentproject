@@ -119,6 +119,9 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   // Withdrawals queue state
   const [pendingWithdrawals, setPendingWithdrawals] = useState<(Transaction & { userId: string; userEmail: string })[]>([]);
   const [loadingWithdrawals, setLoadingWithdrawals] = useState(false);
+  const [withdrawalsEnabled, setWithdrawalsEnabled] = useState(true);
+  const [totalPlatformBalance, setTotalPlatformBalance] = useState(0);
+  const [loadingPlatformBalance, setLoadingPlatformBalance] = useState(false);
 
   // Session audit trail
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -148,6 +151,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         fetchGlobalSettings();
         fetchPlans();
         fetchPendingWithdrawals();
+        fetchPlatformBalance();
         addAuditLog('Authorized Session', 'System Mainframe');
       }
     };
@@ -244,6 +248,44 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     }
   };
 
+  // Calculate live platform balance: sum of completed deposits minus completed withdrawals
+  const fetchPlatformBalance = async () => {
+    setLoadingPlatformBalance(true);
+    try {
+      const qDeposits = query(
+        collectionGroup(db, 'transactions'),
+        where('type', '==', 'deposit'),
+        where('status', '==', 'completed')
+      );
+      const qWithdrawals = query(
+        collectionGroup(db, 'transactions'),
+        where('type', '==', 'withdraw'),
+        where('status', '==', 'completed')
+      );
+
+      const [snapDep, snapWith] = await Promise.all([
+        getDocs(qDeposits),
+        getDocs(qWithdrawals)
+      ]);
+
+      let totalDep = 0;
+      snapDep.docs.forEach(doc => {
+        totalDep += doc.data().amount || 0;
+      });
+
+      let totalWith = 0;
+      snapWith.docs.forEach(doc => {
+        totalWith += doc.data().amount || 0;
+      });
+
+      setTotalPlatformBalance(Number((totalDep - totalWith).toFixed(2)));
+    } catch (err) {
+      console.error('Error fetching platform balance:', err);
+    } finally {
+      setLoadingPlatformBalance(false);
+    }
+  };
+
   // Fetch system global configs
   const fetchGlobalSettings = async () => {
     try {
@@ -265,6 +307,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         setMonthlyWithdrawalLimitInput(String(data.monthlyWithdrawalLimit ?? '5000.00'));
         setDailyWithdrawalLimitInput(String(data.dailyWithdrawalLimit ?? '1000.00'));
         setReferralCommissionRateInput(String(data.referralCommissionRate ?? '20'));
+        setWithdrawalsEnabled(data.withdrawalsEnabled !== false);
       }
     } catch (err) {
       console.error('Error fetching global settings:', err);
@@ -354,6 +397,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       
       fetchPendingWithdrawals();
       fetchUsers();
+      fetchPlatformBalance();
     } catch (err: any) {
       alert('Failed to execute payout: ' + err.message);
     }
@@ -378,6 +422,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       alert('Withdrawal disapproved and funds refunded to user.');
       fetchPendingWithdrawals();
       fetchUsers();
+      fetchPlatformBalance();
     } catch (err: any) {
       alert('Failed to reject withdrawal: ' + err.message);
     }
@@ -626,6 +671,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       addAuditLog(`Adjusted Balance (${balanceAction.toUpperCase()} $${value} USDT as ${txType.toUpperCase()})`, selectedUser.email);
       setBalanceAmount('');
       setTxDescription('');
+      fetchPlatformBalance();
     } catch (err) {
       alert('Balance adjustment failed: ' + err);
     }
@@ -793,7 +839,8 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         maxWithdrawal: parseFloat(maxWithdrawalInput) || 1000.00,
         monthlyWithdrawalLimit: parseFloat(monthlyWithdrawalLimitInput) || 5000.00,
         dailyWithdrawalLimit: parseFloat(dailyWithdrawalLimitInput) || 1000.00,
-        referralCommissionRate: parseFloat(referralCommissionRateInput) || 20
+        referralCommissionRate: parseFloat(referralCommissionRateInput) || 20,
+        withdrawalsEnabled: withdrawalsEnabled
       }, { merge: true });
 
       addAuditLog('Updated Global Settings Matrix', 'Mainframe Config');
@@ -1063,6 +1110,28 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
         {/* Dynamic Display Area */}
         <div className="lg:col-span-9 space-y-6">
+
+          {/* Global Platform Liquidity Banner */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border border-emerald-500/20 bg-slate-950/80 rounded-xl p-4 font-mono">
+            <div className="bg-slate-900 border border-emerald-500/10 rounded-lg p-3 text-center">
+              <span className="text-[9px] text-emerald-500/50 block uppercase tracking-wider mb-0.5">Total Balance in Hand</span>
+              <span className="text-lg font-bold text-emerald-400 font-mono">
+                {loadingPlatformBalance ? 'CALCULATING...' : `$${totalPlatformBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} USDT`}
+              </span>
+            </div>
+            <div className="bg-slate-900 border border-emerald-500/10 rounded-lg p-3 text-center">
+              <span className="text-[9px] text-emerald-500/50 block uppercase tracking-wider mb-0.5">Registered Users</span>
+              <span className="text-lg font-bold text-white font-mono">
+                {users.length} PROFILES
+              </span>
+            </div>
+            <div className="bg-slate-900 border border-emerald-500/10 rounded-lg p-3 text-center flex flex-col justify-center items-center">
+              <span className="text-[9px] text-emerald-500/50 block uppercase tracking-wider mb-0.5">Withdrawal Gateway</span>
+              <span className={`text-xs font-bold px-2.5 py-0.5 rounded uppercase font-mono ${withdrawalsEnabled ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/15 text-red-400 border border-red-500/30'}`}>
+                {withdrawalsEnabled ? 'ONLINE / ACTIVE' : 'OFFLINE / LOCKED'}
+              </span>
+            </div>
+          </div>
 
           {/* TAB 1: USERS MATRIX AND DETAILS */}
           {activeTab === 'users' && (
@@ -1850,6 +1919,23 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     </label>
                   </div>
 
+                  {/* Withdrawal gateway toggle */}
+                  <div className="bg-slate-950 p-4 border border-emerald-500/10 rounded-xl flex items-center justify-between">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-white uppercase block">Withdrawal Gateway Override</span>
+                      <span className="text-[9px] text-slate-500 uppercase block">Enable or disable withdrawals globally</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={withdrawalsEnabled}
+                        onChange={(e) => setWithdrawalsEnabled(e.target.checked)}
+                        className="sr-only peer" 
+                      />
+                      <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:bg-slate-950"></div>
+                    </label>
+                  </div>
+
                   {/* OxaPay Merchant Key Block */}
                   <div className="bg-slate-950 p-4 border border-emerald-500/10 rounded-xl space-y-2.5">
                     <div className="flex items-center gap-1.5 text-white">
@@ -2268,6 +2354,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         <th className="py-2">Transaction ID</th>
                         <th className="py-2">Amount</th>
                         <th className="py-2">Payment Destination</th>
+                        <th className="py-2">Status</th>
                         <th className="py-2">Date Requested</th>
                         <th className="py-2 text-right">Actions</th>
                       </tr>
@@ -2281,20 +2368,43 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                           <td className="py-2.5 text-slate-300 truncate max-w-[150px]" title={tx.address}>
                             {tx.address || 'Not specified'}
                           </td>
+                          <td className="py-2.5">
+                            {tx.status === 'completed' && (
+                              <span className="px-2 py-0.5 rounded text-[8px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 uppercase">
+                                Auto-Paid
+                              </span>
+                            )}
+                            {tx.status === 'rejected' && (
+                              <span className="px-2 py-0.5 rounded text-[8px] font-bold bg-red-500/15 text-red-400 border border-red-500/20 uppercase">
+                                Rejected
+                              </span>
+                            )}
+                            {tx.status === 'pending' && (
+                              <span className="px-2 py-0.5 rounded text-[8px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 uppercase animate-pulse">
+                                Pending
+                              </span>
+                            )}
+                          </td>
                           <td className="py-2.5 text-emerald-500/40">{tx.date}</td>
                           <td className="py-2.5 text-right space-x-2">
-                            <button
-                              onClick={() => handleApproveWithdrawal(tx, tx.userId)}
-                              className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-[9px] transition-all uppercase cursor-pointer"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleRejectWithdrawal(tx, tx.userId)}
-                              className="px-2.5 py-1 bg-red-950 hover:bg-red-950/40 border border-red-500/30 hover:border-red-500/50 text-red-400 font-bold rounded text-[9px] transition-all uppercase cursor-pointer"
-                            >
-                              Disapprove
-                            </button>
+                            {tx.status === 'pending' ? (
+                              <>
+                                <button
+                                  onClick={() => handleApproveWithdrawal(tx, tx.userId)}
+                                  className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-[9px] transition-all uppercase cursor-pointer"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => handleRejectWithdrawal(tx, tx.userId)}
+                                  className="px-2.5 py-1 bg-red-950 hover:bg-red-950/40 border border-red-500/30 hover:border-red-500/50 text-red-400 font-bold rounded text-[9px] transition-all uppercase cursor-pointer"
+                                >
+                                  Disapprove
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-slate-600 text-[8px] italic uppercase">PROCESSED</span>
+                            )}
                           </td>
                         </tr>
                       ))}

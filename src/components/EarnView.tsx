@@ -75,71 +75,75 @@ export const EarnView: React.FC = () => {
       )}
 
       {/* Active Subscriptions */}
-      {activePlans.length > 0 && (
-        <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2 text-white">
-            <Activity className="w-4 h-4 text-emerald-500 animate-pulse" />
-            <span>{t.activePlansHeader} ({activePlans.length})</span>
-          </h3>
+      {(() => {
+        const runningPlans = activePlans.filter(p => p.status === 'active' && new Date(p.endDate) > new Date());
+        if (runningPlans.length === 0) return null;
+        return (
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2 text-white">
+              <Activity className="w-4 h-4 text-emerald-500 animate-pulse" />
+              <span>{t.activePlansHeader} ({runningPlans.length})</span>
+            </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {activePlans.map((active) => {
-              const startDate = new Date(active.startDate);
-              const endDate = new Date(active.endDate);
-              const elapsedDays = Math.min(30, Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-              const progressPercent = (elapsedDays / 30) * 100;
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {runningPlans.map((active) => {
+                const startDate = new Date(active.startDate);
+                const endDate = new Date(active.endDate);
+                const elapsedDays = Math.min(30, Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+                const progressPercent = (elapsedDays / 30) * 100;
 
-              return (
-                <div 
-                  key={active.id}
-                  className="bg-slate-950 border border-emerald-400 rounded-lg p-4 relative overflow-hidden group shadow-md"
-                >
-                  <div className="absolute top-0 left-0 right-0 h-[3px] bg-emerald-400" />
-                  
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <span className="text-[9px] text-emerald-500/50 block">CONTRACT_ADDR: 0x{active.id.slice(0, 8)}...</span>
-                      <h4 className="font-bold text-white text-xs uppercase">{active.name}</h4>
+                return (
+                  <div 
+                    key={active.id}
+                    className="bg-slate-950 border border-emerald-400 rounded-lg p-4 relative overflow-hidden group shadow-md"
+                  >
+                    <div className="absolute top-0 left-0 right-0 h-[3px] bg-emerald-400" />
+                    
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <span className="text-[9px] text-emerald-500/50 block">CONTRACT_ADDR: 0x{active.id.slice(0, 8)}...</span>
+                        <h4 className="font-bold text-white text-xs uppercase">{active.name}</h4>
+                      </div>
+                      <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-[9px] font-bold">
+                        ACTIVE_RUN
+                      </span>
                     </div>
-                    <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-[9px] font-bold">
-                      ACTIVE_RUN
-                    </span>
+
+                    <div className="space-y-2 mb-4 text-xs">
+                      <div className="flex justify-between border-b border-emerald-500/10 pb-1 text-[11px]">
+                        <span className="text-emerald-500/60">DEPLOYED CAPITAL</span>
+                        <span className="font-bold text-white">${active.price.toFixed(2)} USDT</span>
+                      </div>
+                      <div className="flex justify-between border-b border-emerald-500/10 pb-1 text-[11px]">
+                        <span className="text-emerald-500/60">ESTIMATED YIELD</span>
+                        <span className="font-bold text-emerald-400">+${active.dailyProfit.toFixed(2)} / DAY</span>
+                      </div>
+                      <div className="flex justify-between border-b border-emerald-500/10 pb-1 text-[11px]">
+                        <span className="text-emerald-500/60">TOTAL HARVESTED</span>
+                        <span className="font-bold text-emerald-300">+${active.totalEarned.toFixed(4)} USDT</span>
+                      </div>
+                    </div>
+
+                    {/* Contract progress */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[9px] text-emerald-500/50 uppercase font-bold">
+                        <span>LOCK_TIME: {elapsedDays}/30 DAYS</span>
+                        <span>30-DAY COLD LOCK</span>
+                      </div>
+                      <div className="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
+                        <div 
+                          className="bg-emerald-400 h-1 rounded-full"
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
-
-                  <div className="space-y-2 mb-4 text-xs">
-                    <div className="flex justify-between border-b border-emerald-500/10 pb-1 text-[11px]">
-                      <span className="text-emerald-500/60">DEPLOYED CAPITAL</span>
-                      <span className="font-bold text-white">${active.price.toFixed(2)} USDT</span>
-                    </div>
-                    <div className="flex justify-between border-b border-emerald-500/10 pb-1 text-[11px]">
-                      <span className="text-emerald-500/60">ESTIMATED YIELD</span>
-                      <span className="font-bold text-emerald-400">+${active.dailyProfit.toFixed(2)} / DAY</span>
-                    </div>
-                    <div className="flex justify-between border-b border-emerald-500/10 pb-1 text-[11px]">
-                      <span className="text-emerald-500/60">TOTAL HARVESTED</span>
-                      <span className="font-bold text-emerald-300">+${active.totalEarned.toFixed(4)} USDT</span>
-                    </div>
-                  </div>
-
-                  {/* Contract progress */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[9px] text-emerald-500/50 uppercase font-bold">
-                      <span>LOCK_TIME: {elapsedDays}/30 DAYS</span>
-                      <span>30-DAY COLD LOCK</span>
-                    </div>
-                    <div className="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
-                      <div 
-                        className="bg-emerald-400 h-1 rounded-full"
-                        style={{ width: `${progressPercent}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Available Plans Subscription Grid */}
       <div>
