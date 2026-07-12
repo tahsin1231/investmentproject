@@ -64,7 +64,7 @@ export const ProfileView: React.FC = () => {
 
           <div className="flex justify-between items-center text-[11px]">
             <span className="text-emerald-500/55 uppercase">PROTOCOL</span>
-            <span className="text-emerald-300">Simulated Email PIN</span>
+            <span className="text-emerald-300">Secure PIN</span>
           </div>
 
           <div className="flex justify-between items-center text-[11px]">

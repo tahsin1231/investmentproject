@@ -60,8 +60,8 @@ export const HomeView: React.FC = () => {
     },
     {
       id: 'n2',
-      title: 'DODDOGE autonomous mining nodes activate layer-2 network optimization',
-      summary: 'DODDOGE core engineers deployed the latest cryptographic hash tuning framework, reducing energy dissipation overhead by 34% while increasing raw reward rates.',
+      title: 'DODOOGE autonomous mining nodes activate layer-2 network optimization',
+      summary: 'DODOOGE core engineers deployed the latest cryptographic hash tuning framework, reducing energy dissipation overhead by 34% while increasing raw reward rates.',
       category: 'SYSTEM',
       timestamp: '42 mins ago',
       readTime: '2 min read',
@@ -142,10 +142,10 @@ export const HomeView: React.FC = () => {
             AI Quantum Terminal v11.8
           </span>
           <h1 className="text-2xl md:text-3xl font-display font-extrabold text-white tracking-tight">
-            Welcome to <span className="text-emerald-400">DODDOGE</span> Neural Center
+            Welcome to <span className="text-emerald-400">DODOOGE</span> Neural Center
           </h1>
           <p className="text-slate-400 text-xs md:text-sm leading-relaxed">
-            Monitor and govern your quantitative operations. Our server-side machine learning arrays continuously track macro fluctuations, executing simulated high-yield block arbitrage.
+            Monitor and govern your quantitative operations. Our server-side machine learning arrays continuously track macro fluctuations, executing real-time high-yield block arbitrage.
           </p>
           {user && (
             <div className="pt-2 flex flex-wrap gap-4 text-xs font-mono text-slate-300">
@@ -273,7 +273,7 @@ export const HomeView: React.FC = () => {
             </div>
             
             <p className="text-xs text-slate-400 leading-relaxed">
-              DODDOGE operates multi-layered Neural Nodes. By selecting Level plans, you scale the computational allocation requested by the reinforcement agents.
+              DODOOGE operates multi-layered Neural Nodes. By selecting Level plans, you scale the computational allocation requested by the reinforcement agents.
             </p>
 
             <div className="bg-slate-950 p-3 rounded-lg border border-slate-850 space-y-2.5 text-[11px] font-mono text-slate-400">

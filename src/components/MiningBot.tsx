@@ -118,30 +118,18 @@ export const MiningBot: React.FC = () => {
               </div>
 
               {/* Action Toggles */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setMiningActive(!miningActive)}
-                  className={`py-2 px-3 rounded font-bold text-xs flex items-center justify-center gap-1.5 border transition-all cursor-pointer uppercase ${
-                    miningActive
-                      ? 'bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400'
-                      : 'bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
-                  }`}
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${miningActive ? 'animate-spin' : ''}`} />
-                  <span>{miningActive ? 'HALT CORE' : 'RESUME'}</span>
-                </button>
-
+              <div className="w-full">
                 <button
                   onClick={handleCollect}
                   disabled={miningBalance <= 0}
-                  className={`py-2 px-3 rounded font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer uppercase ${
+                  className={`w-full py-2.5 px-4 rounded font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer uppercase ${
                     miningBalance > 0
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                      ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/10'
                       : 'bg-slate-900 border border-emerald-500/10 text-emerald-500/40 cursor-not-allowed'
                   }`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>HARVEST</span>
+                  <span>HARVEST MINING BALANCE</span>
                 </button>
               </div>
 

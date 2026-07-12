@@ -11,7 +11,8 @@ import {
   getDoc,
   query,
   where,
-  deleteDoc
+  deleteDoc,
+  collectionGroup
 } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { 
@@ -36,7 +37,9 @@ import {
   ShieldCheck,
   Award,
   Terminal,
-  Cpu
+  Cpu,
+  UserCheck,
+  CheckSquare
 } from 'lucide-react';
 
 interface PromoCode {
@@ -68,7 +71,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [selectedUserPlans, setSelectedUserPlans] = useState<ActivePlan[]>([]);
   const [selectedUserTxs, setSelectedUserTxs] = useState<Transaction[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'users' | 'mining' | 'promos' | 'system' | 'plans'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'mining' | 'promos' | 'system' | 'plans' | 'withdrawals'>('users');
 
   // Dynamic plans states
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -105,10 +108,34 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [marketPumpPercent, setMarketPumpPercent] = useState('5.0');
   const [platformUsersOffset, setPlatformUsersOffset] = useState('14800');
   const [platformPayoutsOffset, setPlatformPayoutsOffset] = useState('249200');
+  const [oxapayKeyInput, setOxapayKeyInput] = useState('');
+  const [oxapayPayoutKeyInput, setOxapayPayoutKeyInput] = useState('');
+  const [minWithdrawalInput, setMinWithdrawalInput] = useState('5.00');
+  const [maxWithdrawalInput, setMaxWithdrawalInput] = useState('1000.00');
+  const [monthlyWithdrawalLimitInput, setMonthlyWithdrawalLimitInput] = useState('5000.00');
+  const [dailyWithdrawalLimitInput, setDailyWithdrawalLimitInput] = useState('1000.00');
   const [systemSaving, setSystemSaving] = useState(false);
+
+  // Withdrawals queue state
+  const [pendingWithdrawals, setPendingWithdrawals] = useState<(Transaction & { userId: string; userEmail: string })[]>([]);
+  const [loadingWithdrawals, setLoadingWithdrawals] = useState(false);
 
   // Session audit trail
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+
+  // Selected user edit fields
+  const [editUserEmail, setEditUserEmail] = useState('');
+  const [editUserPassword, setEditUserPassword] = useState('');
+  const [editUserBalance, setEditUserBalance] = useState('');
+  const [editUserFirstName, setEditUserFirstName] = useState('');
+  const [editUserLastName, setEditUserLastName] = useState('');
+  const [editUserUsername, setEditUserUsername] = useState('');
+  const [editUserPhone, setEditUserPhone] = useState('');
+  const [editUserReferredBy, setEditUserReferredBy] = useState('');
+  const [isSavingUserFields, setIsSavingUserFields] = useState(false);
+
+  // Global referral commission rate state
+  const [referralCommissionRateInput, setReferralCommissionRateInput] = useState('20');
 
   // Monitor Auth Status on load
   useEffect(() => {
@@ -120,6 +147,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         fetchPromoCodes();
         fetchGlobalSettings();
         fetchPlans();
+        fetchPendingWithdrawals();
         addAuditLog('Authorized Session', 'System Mainframe');
       }
     };
@@ -180,6 +208,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       fetchPromoCodes();
       fetchGlobalSettings();
       fetchPlans();
+      fetchPendingWithdrawals();
       addAuditLog('Successful Mainframe Login', 'admin@gmail.com');
     } catch (err: any) {
       console.error(err);
@@ -229,9 +258,128 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         }
         setPlatformUsersOffset(String(data.usersOffset || '14800'));
         setPlatformPayoutsOffset(String(data.payoutsOffset || '249200'));
+        setOxapayKeyInput(data.oxapayApiKey || '');
+        setOxapayPayoutKeyInput(data.oxapayPayoutApiKey || '');
+        setMinWithdrawalInput(String(data.minWithdrawal ?? '5.00'));
+        setMaxWithdrawalInput(String(data.maxWithdrawal ?? '1000.00'));
+        setMonthlyWithdrawalLimitInput(String(data.monthlyWithdrawalLimit ?? '5000.00'));
+        setDailyWithdrawalLimitInput(String(data.dailyWithdrawalLimit ?? '1000.00'));
+        setReferralCommissionRateInput(String(data.referralCommissionRate ?? '20'));
       }
     } catch (err) {
       console.error('Error fetching global settings:', err);
+    }
+  };
+
+  // Fetch pending withdrawals group
+  const fetchPendingWithdrawals = async () => {
+    setLoadingWithdrawals(true);
+    try {
+      const q = query(
+        collectionGroup(db, 'transactions'),
+        where('type', '==', 'withdraw'),
+        where('status', '==', 'pending')
+      );
+      const snap = await getDocs(q);
+      const list = snap.docs.map(d => {
+        const tx = d.data() as Transaction;
+        const userId = d.ref.parent.parent?.id || '';
+        return {
+          ...tx,
+          userId,
+          userEmail: 'User ID: ' + userId.slice(0, 8)
+        };
+      });
+
+      // Match real user emails if users list loaded
+      const enriched = list.map(tx => {
+        const found = users.find(u => u.id === tx.userId);
+        return {
+          ...tx,
+          userEmail: found ? found.email : tx.userEmail
+        };
+      });
+
+      setPendingWithdrawals(enriched);
+    } catch (err) {
+      console.error('Error fetching pending withdrawals:', err);
+    } finally {
+      setLoadingWithdrawals(false);
+    }
+  };
+
+  const handleApproveWithdrawal = async (tx: any, userId: string) => {
+    const netAmount = tx.netAmount || Number((tx.amount - 0.25).toFixed(2));
+    const address = tx.address || tx.txHash;
+
+    const confirmApprove = window.confirm(`Are you sure you want to approve this withdrawal request?\n\nUser: ${tx.userEmail}\nAmount: $${tx.amount.toFixed(2)} USDT\nFee: $0.25 USDT\nNet Payout Amount: $${netAmount.toFixed(2)} USDT\nDestination Wallet Address: ${address}\n\nClick OK to initiate a real OxaPay cryptocurrency payout. This action is irreversible.`);
+    if (!confirmApprove) return;
+
+    try {
+      // Add a status indicator or show alert
+      addAuditLog(`Initiating Payout for Tx ${tx.id}`, userId);
+
+      const response = await fetch('/api/oxapay/payout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          apiKey: oxapayPayoutKeyInput,
+          address: address,
+          amount: netAmount
+        })
+      });
+
+      const resData = await response.json();
+
+      if (resData.status === 200 || resData.status === '200' || resData.status === 'success') {
+        const txRef = doc(db, 'users', userId, 'transactions', tx.id);
+        const trackId = resData.trackId || resData.track_id || (resData.data && (resData.data.trackId || resData.data.track_id)) || '';
+        const payoutStatus = resData.payoutStatus || resData.status || (resData.data && resData.data.status) || 'success';
+        
+        await updateDoc(txRef, { 
+          status: 'completed',
+          payoutTrackId: String(trackId),
+          payoutStatus: String(payoutStatus)
+        });
+
+        addAuditLog(`Approved Withdrawal ${tx.id} - Payout successful. Track ID: ${trackId}`, userId);
+        alert(`Withdrawal approved and OxaPay Payout processed successfully!\nTrack ID: ${trackId}`);
+      } else {
+        const errorMsg = resData.message || (resData.error && resData.error.message) || 'Unknown OxaPay error';
+        alert(`OxaPay Payout Failed: ${errorMsg}\n\nThe transaction has been kept as pending. Please verify your Payout API key and OxaPay balance before trying again.`);
+        addAuditLog(`OxaPay Payout Failed for Tx ${tx.id}: ${errorMsg}`, userId);
+      }
+      
+      fetchPendingWithdrawals();
+      fetchUsers();
+    } catch (err: any) {
+      alert('Failed to execute payout: ' + err.message);
+    }
+  };
+
+  const handleRejectWithdrawal = async (tx: Transaction, userId: string) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        alert('User profile does not exist.');
+        return;
+      }
+      const userData = userSnap.data() as User;
+      const newBalance = Number((userData.balance + tx.amount).toFixed(2));
+      
+      await updateDoc(userRef, { balance: newBalance });
+      const txRef = doc(db, 'users', userId, 'transactions', tx.id);
+      await updateDoc(txRef, { status: 'rejected' });
+      
+      addAuditLog(`Rejected Withdrawal ${tx.id} ($${tx.amount} refunded)`, userId);
+      alert('Withdrawal disapproved and funds refunded to user.');
+      fetchPendingWithdrawals();
+      fetchUsers();
+    } catch (err: any) {
+      alert('Failed to reject withdrawal: ' + err.message);
     }
   };
 
@@ -333,9 +481,62 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       // Sort newest first
       txsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setSelectedUserTxs(txsList);
+
+      // Populate edit states
+      setEditUserEmail(user.email || '');
+      setEditUserPassword(user.password || '');
+      setEditUserBalance(String(user.balance ?? '0'));
+      setEditUserFirstName(user.firstName || '');
+      setEditUserLastName(user.lastName || '');
+      setEditUserUsername(user.username || '');
+      setEditUserPhone(user.phone || '');
+      setEditUserReferredBy(user.referredBy || '');
     } catch (err) {
       console.error('Error loading subcollections:', err);
     }
+  };
+
+  // Save selected user fields override
+  const handleSaveUserFields = async () => {
+    if (!selectedUser) return;
+    setIsSavingUserFields(true);
+    try {
+      const userRef = doc(db, 'users', selectedUser.id);
+      const updatedFields = {
+        email: editUserEmail.trim(),
+        password: editUserPassword.trim(),
+        balance: parseFloat(editUserBalance) || 0,
+        firstName: editUserFirstName.trim(),
+        lastName: editUserLastName.trim(),
+        username: editUserUsername.trim(),
+        phone: editUserPhone.trim(),
+        referredBy: editUserReferredBy.trim() || null
+      };
+
+      await updateDoc(userRef, updatedFields);
+      
+      const updatedUser = { ...selectedUser, ...updatedFields };
+      setSelectedUser(updatedUser);
+      setUsers(prev => prev.map(u => u.id === selectedUser.id ? updatedUser : u));
+
+      addAuditLog(`Updated Profile Information`, selectedUser.email);
+      alert('User details saved and synchronized successfully!');
+    } catch (err: any) {
+      alert('Failed to save user fields: ' + err.message);
+    } finally {
+      setIsSavingUserFields(false);
+    }
+  };
+
+  // Impersonate / Proxy Login as User
+  const handleImpersonateUser = () => {
+    if (!selectedUser) return;
+    const confirmImpersonation = window.confirm(`Are you sure you want to login as this user?\n\nUser: ${selectedUser.email}\n\nYou will enter their dashboard exactly as they see it. You can exit anytime via the exit banner. Click OK to proceed.`);
+    if (!confirmImpersonation) return;
+
+    localStorage.setItem('dodooge_custom_user_id', selectedUser.id);
+    addAuditLog(`Impersonated Session Started`, selectedUser.email);
+    window.location.reload();
   };
 
   // Ban/Unban user
@@ -585,7 +786,14 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         maintenanceMode: maintenanceMode,
         marketOffsets: updatedOffsets,
         usersOffset: parseInt(platformUsersOffset) || 14800,
-        payoutsOffset: parseInt(platformPayoutsOffset) || 249200
+        payoutsOffset: parseInt(platformPayoutsOffset) || 249200,
+        oxapayApiKey: oxapayKeyInput,
+        oxapayPayoutApiKey: oxapayPayoutKeyInput,
+        minWithdrawal: parseFloat(minWithdrawalInput) || 5.00,
+        maxWithdrawal: parseFloat(maxWithdrawalInput) || 1000.00,
+        monthlyWithdrawalLimit: parseFloat(monthlyWithdrawalLimitInput) || 5000.00,
+        dailyWithdrawalLimit: parseFloat(dailyWithdrawalLimitInput) || 1000.00,
+        referralCommissionRate: parseFloat(referralCommissionRateInput) || 20
       }, { merge: true });
 
       addAuditLog('Updated Global Settings Matrix', 'Mainframe Config');
@@ -630,7 +838,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               <ShieldAlert className="w-8 h-8" />
             </div>
             <h1 className="text-lg font-bold uppercase tracking-widest text-white">Mainframe Access Required</h1>
-            <p className="text-[10px] text-emerald-500/50 uppercase mt-1">DODDOGE_CLI Security protocol v3.8</p>
+            <p className="text-[10px] text-emerald-500/50 uppercase mt-1">DODOOGE_CLI Security protocol v3.8</p>
           </div>
 
           {authError && (
@@ -712,7 +920,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <Cpu className="w-6 h-6 text-emerald-400 animate-pulse" />
           <div>
             <h1 className="text-xs sm:text-sm font-bold text-white uppercase tracking-widest flex items-center gap-1.5">
-              DODDOGE CENTRAL MAINFRAME
+              DODOOGE CENTRAL MAINFRAME
               <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-400/20 px-1.5 py-0.5 rounded font-mono">
                 ADMIN V2.5
               </span>
@@ -814,6 +1022,18 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             >
               <Sliders className="w-4 h-4" />
               <span>Plan Configurator</span>
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('withdrawals'); fetchPendingWithdrawals(); }}
+              className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2.5 ${
+                activeTab === 'withdrawals'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/10'
+                  : 'text-emerald-500/70 hover:bg-slate-900 hover:text-emerald-400'
+              }`}
+            >
+              <Lock className="w-4 h-4" />
+              <span>Withdrawals Queue</span>
             </button>
           </div>
 
@@ -921,14 +1141,20 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                       <div className="flex items-start justify-between">
                         <div>
                           <h2 className="text-sm font-bold text-white uppercase">
-                            {selectedUser.firstName} {selectedUser.lastName}
+                            {selectedUser.firstName || 'No Name'} {selectedUser.lastName || ''}
                           </h2>
                           <p className="text-[10px] text-slate-500 mt-0.5">UID: {selectedUser.id}</p>
-                          <p className="text-[10px] text-slate-500">Email: {selectedUser.email}</p>
-                          {selectedUser.phone && <p className="text-[10px] text-slate-500">Phone: {selectedUser.phone}</p>}
+                          <p className="text-[10px] text-slate-500 font-mono">Email: {selectedUser.email}</p>
+                          <p className="text-[10px] text-emerald-400 font-mono">Password: {selectedUser.password || 'Using Google OAuth / Unset'}</p>
                         </div>
-                        <div className="text-right">
-                          <span className="text-[9px] text-emerald-500/40 uppercase block">Affiliate Code</span>
+                        <div className="text-right flex flex-col items-end gap-2">
+                          <button
+                            onClick={handleImpersonateUser}
+                            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 border border-amber-300"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>Impersonate User</span>
+                          </button>
                           <span className="text-xs font-mono font-bold text-emerald-400 bg-slate-900 border border-emerald-500/15 px-2 py-0.5 rounded">
                             {selectedUser.referralCode}
                           </span>
@@ -955,6 +1181,168 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                           </span>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Profile Information overrides form */}
+                    <div className="bg-slate-950/80 p-4 border border-emerald-500/10 rounded-xl space-y-3">
+                      <h3 className="text-[10px] font-bold text-white uppercase tracking-wider border-b border-emerald-500/10 pb-1.5 flex justify-between items-center">
+                        <span>EDIT LIVE USER DETAILS</span>
+                        <span className="text-[9px] text-emerald-500/40 font-mono">ID: {selectedUser.id.slice(0, 8)}</span>
+                      </h3>
+                      
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[8px] text-slate-500 uppercase mb-1">Email Port</label>
+                          <input
+                            type="email"
+                            value={editUserEmail}
+                            onChange={(e) => setEditUserEmail(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-3 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] text-slate-500 uppercase mb-1">Access Password</label>
+                          <input
+                            type="text"
+                            value={editUserPassword}
+                            onChange={(e) => setEditUserPassword(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-3 text-xs text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[8px] text-slate-500 uppercase mb-1">USDT Balance</label>
+                          <input
+                            type="number"
+                            value={editUserBalance}
+                            onChange={(e) => setEditUserBalance(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-3 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] text-slate-500 uppercase mb-1">Username (@)</label>
+                          <input
+                            type="text"
+                            value={editUserUsername}
+                            onChange={(e) => setEditUserUsername(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-3 text-xs text-white font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[8px] text-slate-500 uppercase mb-1">First Name</label>
+                          <input
+                            type="text"
+                            value={editUserFirstName}
+                            onChange={(e) => setEditUserFirstName(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-3 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] text-slate-500 uppercase mb-1">Last Name</label>
+                          <input
+                            type="text"
+                            value={editUserLastName}
+                            onChange={(e) => setEditUserLastName(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-3 text-xs text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[8px] text-slate-500 uppercase mb-1">Phone Node</label>
+                          <input
+                            type="text"
+                            value={editUserPhone}
+                            onChange={(e) => setEditUserPhone(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-3 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] text-slate-500 uppercase mb-1">Referred By (Code)</label>
+                          <input
+                            type="text"
+                            value={editUserReferredBy}
+                            onChange={(e) => setEditUserReferredBy(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-3 text-xs text-white font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleSaveUserFields}
+                        disabled={isSavingUserFields}
+                        className="w-full bg-slate-900 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 font-bold py-2.5 px-3 rounded-lg text-[10px] uppercase border border-emerald-500/20 hover:border-emerald-400 transition-all cursor-pointer flex items-center justify-center gap-1.5 font-mono"
+                      >
+                        {isSavingUserFields ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>SAVING PROFILE OVERRIDES...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckSquare className="w-3.5 h-3.5" />
+                            <span>COMMIT PROFILE OVERRIDES</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Active Plans / koyta plan kinlo - view and change */}
+                    <div className="bg-slate-950 p-4 border border-emerald-500/10 rounded-xl space-y-3">
+                      <h3 className="text-[10px] font-bold text-white uppercase tracking-wider border-b border-emerald-500/10 pb-1.5 flex justify-between items-center">
+                        <span>ACTIVE PLANS & MINERS SUBSCRIPTION</span>
+                        <span className="text-[9px] bg-emerald-500/15 text-emerald-400 px-2 rounded font-mono font-bold">
+                          {selectedUserPlans.length} PLANNED
+                        </span>
+                      </h3>
+
+                      {selectedUserPlans.length === 0 ? (
+                        <p className="text-[10px] text-slate-600 italic py-2 text-center">No active plans subscribed by user.</p>
+                      ) : (
+                        <div className="space-y-2 max-h-40 overflow-y-auto scrollbar pr-1">
+                          {selectedUserPlans.map((p) => {
+                            const handleTerminateActivePlan = async () => {
+                              if (!window.confirm(`Are you sure you want to terminate this active plan [${p.name}]?`)) return;
+                              try {
+                                await deleteDoc(doc(db, 'users', selectedUser.id, 'activePlans', p.id));
+                                setSelectedUserPlans(prev => prev.filter(item => item.id !== p.id));
+                                addAuditLog(`Terminated Active Plan ${p.name}`, selectedUser.email);
+                                alert('User active mining plan terminated successfully.');
+                              } catch (err: any) {
+                                alert('Failed to terminate plan: ' + err.message);
+                              }
+                            };
+
+                            return (
+                              <div key={p.id} className="bg-slate-900/60 p-2.5 border border-slate-800 rounded-lg flex items-center justify-between text-[11px]">
+                                <div>
+                                  <p className="font-bold text-white uppercase">{p.name}</p>
+                                  <p className="text-[9px] text-slate-500">Price: ${p.price} USDT | Profit: ${p.totalEarned.toFixed(4)}</p>
+                                  <p className="text-[8px] text-slate-600 font-mono">Start: {new Date(p.startDate).toLocaleDateString()}</p>
+                                </div>
+                                <div className="text-right flex flex-col items-end gap-1">
+                                  <span className="text-[8px] px-1 bg-emerald-500/10 text-emerald-400 uppercase font-mono font-bold rounded">
+                                    {p.status}
+                                  </span>
+                                  <button
+                                    onClick={handleTerminateActivePlan}
+                                    className="bg-red-950/40 hover:bg-red-900 border border-red-500/20 hover:border-red-400 text-red-400 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase cursor-pointer transition-all"
+                                  >
+                                    Terminate
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
 
                     {/* Operational Actions Grid */}
@@ -1078,32 +1466,45 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         </button>
                       </div>
 
-                      {/* Display user transactions log */}
+                      {/* Display user transactions log - withdraw kon adress e dilo included */}
                       <div>
                         <h4 className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                           RECORDS LEDGER LOGS
                         </h4>
-                        <div className="max-h-36 overflow-y-auto border border-emerald-500/5 rounded-lg bg-slate-950 p-2 text-[10px] space-y-1.5 scrollbar">
+                        <div className="max-h-56 overflow-y-auto border border-emerald-500/5 rounded-lg bg-slate-950 p-2 text-[10px] space-y-1.5 scrollbar">
                           {selectedUserTxs.length === 0 ? (
                             <div className="text-slate-800 text-center py-4">No logged transactions found.</div>
                           ) : (
                             selectedUserTxs.map((tx) => (
                               <div key={tx.id} className="flex justify-between items-center border-b border-slate-900 pb-1.5">
-                                <div>
-                                  <span className={`uppercase font-bold px-1 rounded text-[8px] mr-1.5 ${
-                                    tx.type === 'deposit' ? 'bg-emerald-500/10 text-emerald-400' :
-                                    tx.type === 'withdraw' ? 'bg-red-500/10 text-red-400' : 'bg-slate-900 text-slate-400'
-                                  }`}>
-                                    {tx.type}
-                                  </span>
-                                  <span className="text-slate-400">{tx.id}</span>
-                                  <p className="text-[8px] text-slate-600 mt-0.5">{tx.date}</p>
+                                <div className="max-w-[70%]">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`uppercase font-bold px-1 rounded text-[8px] ${
+                                      tx.type === 'deposit' ? 'bg-emerald-500/10 text-emerald-400' :
+                                      tx.type === 'withdraw' ? 'bg-red-500/10 text-red-400' : 'bg-slate-900 text-slate-400'
+                                    }`}>
+                                      {tx.type}
+                                    </span>
+                                    <span className="text-slate-400 font-mono text-[9px]">{tx.id}</span>
+                                  </div>
+                                  <p className="text-[8px] text-slate-600 mt-0.5 font-mono">{tx.date}</p>
+                                  {tx.address && (
+                                    <p className="text-[9px] text-amber-400 font-semibold mt-1 font-mono break-all bg-amber-500/5 px-2 py-1 rounded border border-emerald-500/10 shadow-[0_0_8px_rgba(245,158,11,0.05)]">
+                                      DEST CRYPTO ADDRESS: {tx.address}
+                                    </p>
+                                  )}
+                                  {tx.txHash && tx.type === 'withdraw' && !tx.address && (
+                                    <p className="text-[9px] text-amber-400 font-semibold mt-1 font-mono break-all bg-amber-500/5 px-2 py-1 rounded border border-emerald-500/10 shadow-[0_0_8px_rgba(245,158,11,0.05)]">
+                                      DEST CRYPTO ADDRESS: {tx.txHash}
+                                    </p>
+                                  )}
                                 </div>
                                 <div className="text-right">
                                   <span className="font-bold text-white font-mono">${tx.amount.toFixed(2)}</span>
                                   <div className="flex items-center gap-1 justify-end mt-0.5">
                                     <span className={`text-[8px] px-1 rounded uppercase font-bold ${
-                                      tx.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-500'
+                                      tx.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 
+                                      tx.status === 'rejected' ? 'bg-red-500/10 text-red-400' : 'bg-yellow-500/10 text-yellow-500'
                                     }`}>
                                       {tx.status}
                                     </span>
@@ -1448,6 +1849,125 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                       <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:bg-slate-950"></div>
                     </label>
                   </div>
+
+                  {/* OxaPay Merchant Key Block */}
+                  <div className="bg-slate-950 p-4 border border-emerald-500/10 rounded-xl space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-white">
+                      <Lock className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">OxaPay merchant api key (Deposits)</span>
+                    </div>
+                    <input
+                      type="password"
+                      placeholder="Enter OxaPay Merchant API Key..."
+                      value={oxapayKeyInput}
+                      onChange={(e) => setOxapayKeyInput(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-700 focus:outline-none"
+                    />
+                    <p className="text-[8px] text-slate-500 uppercase leading-normal">
+                      This key is used on the server side to create real payment invoices and auto-verify deposits.
+                    </p>
+                  </div>
+
+                  {/* OxaPay Payout Key Block */}
+                  <div className="bg-slate-950 p-4 border border-emerald-500/10 rounded-xl space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-white">
+                      <Lock className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">OxaPay Payout api key (Withdrawals)</span>
+                    </div>
+                    <input
+                      type="password"
+                      placeholder="Enter OxaPay Payout API Key..."
+                      value={oxapayPayoutKeyInput}
+                      onChange={(e) => setOxapayPayoutKeyInput(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-700 focus:outline-none"
+                    />
+                    <p className="text-[8px] text-slate-500 uppercase leading-normal">
+                      This key is used on the server side to authorize and execute real payouts when you click approve.
+                    </p>
+                  </div>
+
+                  {/* Withdrawal Boundaries Controls */}
+                  <div className="bg-slate-950 p-4 border border-emerald-500/10 rounded-xl space-y-3">
+                    <div className="flex items-center gap-1.5 text-white border-b border-emerald-500/10 pb-2">
+                      <Sliders className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">Withdrawal Boundaries & Limits</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[8px] text-slate-500 uppercase mb-1">Minimum Withdrawal</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="e.g. 5.00"
+                          value={minWithdrawalInput}
+                          onChange={(e) => setMinWithdrawalInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] text-slate-500 uppercase mb-1">Maximum Withdrawal</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="e.g. 1000.00"
+                          value={maxWithdrawalInput}
+                          onChange={(e) => setMaxWithdrawalInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[8px] text-slate-500 uppercase mb-1">Daily Limit (Per User)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="e.g. 1000.00"
+                          value={dailyWithdrawalLimitInput}
+                          onChange={(e) => setDailyWithdrawalLimitInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] text-slate-500 uppercase mb-1">Monthly Limit (Per User)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="e.g. 5000.00"
+                          value={monthlyWithdrawalLimitInput}
+                          onChange={(e) => setMonthlyWithdrawalLimitInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[8px] text-slate-500 uppercase leading-normal">
+                      Configure individual boundaries for users. Standard transactions will be validated against these before submission.
+                    </p>
+                  </div>
+
+                  {/* Referral Commission Rates */}
+                  <div className="bg-slate-950 p-4 border border-emerald-500/10 rounded-xl space-y-3">
+                    <div className="flex items-center gap-1.5 text-white border-b border-emerald-500/10 pb-2">
+                      <Award className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">Affiliate Commission System Config</span>
+                    </div>
+                    <div>
+                      <label className="block text-[8px] text-slate-500 uppercase mb-1">Global Referral Commission Rate (%)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="e.g. 20"
+                        value={referralCommissionRateInput}
+                        onChange={(e) => setReferralCommissionRateInput(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none font-mono"
+                      />
+                    </div>
+                    <p className="text-[8px] text-slate-500 uppercase leading-normal">
+                      Adjusts the affiliate reward rate paid to referrers when their sub-nodes buy active investment packages. Standard default value is 20%.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Right controls */}
@@ -1711,6 +2231,77 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* TAB: WITHDRAWAL REQUESTS QUEUE */}
+          {activeTab === 'withdrawals' && (
+            <div className="border border-emerald-500/20 bg-slate-950/80 rounded-xl p-5 space-y-6">
+              <div className="flex justify-between items-center border-b border-emerald-500/10 pb-3">
+                <div>
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider">Outbound Withdrawal Queue</h2>
+                  <p className="text-[10px] text-emerald-500/40 uppercase mt-0.5">Manage and approve pending manual user withdrawal transfers</p>
+                </div>
+                <button
+                  onClick={fetchPendingWithdrawals}
+                  className="p-1.5 bg-slate-900 hover:bg-slate-850 rounded border border-emerald-500/15 text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1.5 text-[10px] uppercase font-bold cursor-pointer"
+                >
+                  <RefreshCw className="w-3 h-3 animate-pulse" />
+                  <span>Refresh Queue</span>
+                </button>
+              </div>
+
+              {loadingWithdrawals ? (
+                <div className="text-center py-12 text-slate-500 text-xs uppercase animate-pulse">
+                  Querying withdrawal queue...
+                </div>
+              ) : pendingWithdrawals.length === 0 ? (
+                <div className="text-center py-12 text-slate-500 text-xs uppercase border border-emerald-500/5 bg-slate-900/10 rounded-xl">
+                  No pending withdrawal requests found in queue.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[10px] border-collapse uppercase font-mono">
+                    <thead>
+                      <tr className="text-emerald-500/50 border-b border-emerald-500/20 pb-2 text-[9px] tracking-wider">
+                        <th className="py-2">User Email</th>
+                        <th className="py-2">Transaction ID</th>
+                        <th className="py-2">Amount</th>
+                        <th className="py-2">Payment Destination</th>
+                        <th className="py-2">Date Requested</th>
+                        <th className="py-2 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingWithdrawals.map((tx) => (
+                        <tr key={tx.id} className="border-b border-emerald-500/10 hover:bg-slate-900/40 text-emerald-400/80">
+                          <td className="py-2.5 font-bold text-white">{tx.userEmail}</td>
+                          <td className="py-2.5 text-slate-400">0x{tx.id.slice(0, 8)}</td>
+                          <td className="py-2.5 font-bold text-emerald-300">${tx.amount.toFixed(2)}</td>
+                          <td className="py-2.5 text-slate-300 truncate max-w-[150px]" title={tx.address}>
+                            {tx.address || 'Not specified'}
+                          </td>
+                          <td className="py-2.5 text-emerald-500/40">{tx.date}</td>
+                          <td className="py-2.5 text-right space-x-2">
+                            <button
+                              onClick={() => handleApproveWithdrawal(tx, tx.userId)}
+                              className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-[9px] transition-all uppercase cursor-pointer"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleRejectWithdrawal(tx, tx.userId)}
+                              className="px-2.5 py-1 bg-red-950 hover:bg-red-950/40 border border-red-500/30 hover:border-red-500/50 text-red-400 font-bold rounded text-[9px] transition-all uppercase cursor-pointer"
+                            >
+                              Disapprove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

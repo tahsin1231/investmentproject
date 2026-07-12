@@ -28,7 +28,7 @@ function MainApp() {
   // Shell CLI States
   const [cmdInput, setCmdInput] = useState('');
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([
-    { text: "DODDOGE UNIX SYSTEM TERMINAL. TTY/0 READY.", type: "success" },
+    { text: "DODOOGE UNIX SYSTEM TERMINAL. TTY/0 READY.", type: "success" },
     { text: "TYPE 'help' TO VIEW COMPATIBLE SYSTEM COMMANDS.", type: "output" }
   ]);
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -70,7 +70,7 @@ function MainApp() {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
     if (ref) {
-      localStorage.setItem('doddoge_pending_referral', ref);
+      localStorage.setItem('dodooge_pending_referral', ref);
     }
   }, []);
 
@@ -80,6 +80,58 @@ function MainApp() {
       setAuthView(null);
     }
   }, [user]);
+
+  // Prevent any copying, cutting, right-clicking, or selection of text globally (except inputs/textareas)
+  useEffect(() => {
+    const handleCopyCut = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+    };
+
+    const handleSelectStart = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
+      const isCmdOrCtrl = e.ctrlKey || e.metaKey;
+      if (isCmdOrCtrl && ['c', 'x', 'a', 's'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('copy', handleCopyCut);
+    document.addEventListener('cut', handleCopyCut);
+    document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('selectstart', handleSelectStart);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('copy', handleCopyCut);
+      document.removeEventListener('cut', handleCopyCut);
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('selectstart', handleSelectStart);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // Handle CLI Command Execution
   const handleCommandSubmit = (e: React.FormEvent) => {
@@ -91,7 +143,7 @@ function MainApp() {
     const command = args[0].toLowerCase();
 
     // Log the user's input
-    const newLogs: TerminalLog[] = [...terminalLogs, { text: `user@doddoge:~$ ${fullCmd}`, type: 'input' }];
+    const newLogs: TerminalLog[] = [...terminalLogs, { text: `user@dodooge:~$ ${fullCmd}`, type: 'input' }];
 
     switch (command) {
       case 'help':
@@ -210,6 +262,13 @@ function MainApp() {
     setCmdInput('');
   };
 
+  const isImpersonating = typeof window !== 'undefined' && !!localStorage.getItem('dodooge_custom_user_id');
+
+  const handleExitImpersonation = () => {
+    localStorage.removeItem('dodooge_custom_user_id');
+    window.location.reload();
+  };
+
   if (adminOpen) {
     return <AdminPanel onClose={() => setAdminOpen(false)} />;
   }
@@ -227,7 +286,7 @@ function MainApp() {
               ⚠️
             </div>
             <h1 className="text-xl font-bold uppercase tracking-widest text-white">System Under Maintenance</h1>
-            <p className="text-[10px] text-red-500/60 uppercase mt-1 font-mono">DODDOGE_CLI Node Lock Active</p>
+            <p className="text-[10px] text-red-500/60 uppercase mt-1 font-mono">DODOOGE_CLI Node Lock Active</p>
           </div>
           <p className="text-xs text-emerald-500/80 uppercase leading-relaxed max-w-md mx-auto">
             The core AI mining mainframe is currently undergoing scheduled optimization upgrades. Node communication and wallet integrations are temporarily offline to preserve ledger integrity.
@@ -243,7 +302,7 @@ function MainApp() {
             </div>
             <div className="flex justify-between">
               <span>Protocol</span>
-              <span className="text-white">DODDOGE v11.8 SECUR_GUARD</span>
+              <span className="text-white">DODOOGE v11.8 SECUR_GUARD</span>
             </div>
           </div>
           <div className="text-[10px] text-emerald-500/35 uppercase flex justify-between items-center pt-2">
@@ -263,6 +322,21 @@ function MainApp() {
   return (
     <div className="bg-slate-950 text-emerald-400 min-h-screen flex flex-col font-mono selection:bg-emerald-500 selection:text-slate-950 crt relative overflow-hidden">
       
+      {isImpersonating && (
+        <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs font-bold font-mono uppercase tracking-wider flex justify-between items-center z-50 shadow-md relative">
+          <div className="flex items-center gap-2">
+            <span className="animate-ping inline-flex h-2.5 w-2.5 rounded-full bg-slate-950 opacity-75 mr-1" />
+            <span>ADMINISTRATOR PORT IMPERSONATION LOGGED IN AS: <strong className="underline text-slate-900">{user?.email}</strong></span>
+          </div>
+          <button 
+            onClick={handleExitImpersonation}
+            className="bg-slate-950 text-amber-500 px-3.5 py-1.5 rounded border border-transparent hover:border-amber-400 font-bold transition-all uppercase cursor-pointer"
+          >
+            Exit Impersonation
+          </button>
+        </div>
+      )}
+
       {/* Laser line horizontal scanning overlay */}
       <div className="absolute inset-x-0 top-0 h-[2px] bg-emerald-500/10 shadow-[0_0_10px_#10b981] animate-[pulse_2s_infinite] pointer-events-none z-50" />
 
@@ -285,7 +359,7 @@ function MainApp() {
               <div className="bg-slate-950 border-b border-emerald-500/20 px-4 py-2 flex items-center justify-between text-[11px]">
                 <div className="flex items-center space-x-2">
                   <TerminalIcon className="w-4 h-4 text-emerald-500" />
-                  <span className="font-bold text-white uppercase tracking-wider">DODDOGE_SYSTEM_SHELL_TTY0</span>
+                  <span className="font-bold text-white uppercase tracking-wider">DODOOGE_SYSTEM_SHELL_TTY0</span>
                 </div>
                 <div className="flex items-center space-x-3 text-emerald-500/50">
                   <span>ACTIVE_TTY</span>
@@ -313,7 +387,7 @@ function MainApp() {
               {/* Command Prompt Form Input */}
               <form onSubmit={handleCommandSubmit} className="flex items-center bg-slate-950 px-4 py-2 text-xs">
                 <CornerDownRight className="w-4 h-4 text-emerald-500 mr-2 shrink-0" />
-                <span className="text-emerald-500/60 font-bold mr-1.5 select-none">user@doddoge:~$</span>
+                <span className="text-emerald-500/60 font-bold mr-1.5 select-none">user@dodooge:~$</span>
                 <input
                   type="text"
                   placeholder="type instruction (e.g. help, clear, home, markets, earn)..."

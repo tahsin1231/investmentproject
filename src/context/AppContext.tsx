@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User, ActivePlan, Transaction, StockData, Plan } from '../types';
 import { INITIAL_STOCKS, updateStockPrices, PLANS } from '../utils/data';
+import { createOxaPayInvoice, checkOxaPayPayment } from '../utils/oxapay';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -45,7 +46,7 @@ interface AppContextType {
   login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: (referralCode?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  deposit: (amount: number, method: string) => Promise<void>;
+  deposit: (amount: number, method: string) => Promise<{ success: boolean; trackId?: string; paymentUrl?: string; error?: string }>;
   withdraw: (amount: number, address: string) => Promise<{ success: boolean; error?: string }>;
   buyPlan: (planId: string) => Promise<{ success: boolean; error?: string }>;
   miningActive: boolean;
@@ -55,6 +56,18 @@ interface AppContextType {
   referrals: { email: string; date: string; bonus: number }[];
   maintenanceMode: boolean;
   plans: Plan[];
+  oxapayApiKey: string;
+  oxapayPayoutApiKey: string;
+  updateOxapayApiKey: (newKey: string) => Promise<void>;
+  updateOxapayPayoutApiKey: (newKey: string) => Promise<void>;
+  verifyDeposit: (trackId: string) => Promise<{ success: boolean; message: string; amount?: number }>;
+  minWithdrawal: number;
+  maxWithdrawal: number;
+  monthlyWithdrawalLimit: number;
+  dailyWithdrawalLimit: number;
+  updateWithdrawalLimits: (minW: number, maxW: number, monthlyW: number, dailyW: number) => Promise<void>;
+  referralCommissionRate: number;
+  updateReferralCommissionRate: (rate: number) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -69,18 +82,118 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [referrals, setReferrals] = useState<{ email: string; date: string; bonus: number }[]>([]);
   const [maintenanceMode, setMaintenanceMode] = useState<boolean>(false);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [oxapayApiKey, setOxapayApiKey] = useState<string>('HLSOHL-M4XCBM-MXMW4B-0BD5YD');
+  const [oxapayPayoutApiKey, setOxapayPayoutApiKey] = useState<string>('HLSOHL-M4XCBM-MXMW4B-0BD5YD');
+  const [minWithdrawal, setMinWithdrawal] = useState<number>(5.00);
+  const [maxWithdrawal, setMaxWithdrawal] = useState<number>(1000.00);
+  const [monthlyWithdrawalLimit, setMonthlyWithdrawalLimit] = useState<number>(5000.00);
+  const [dailyWithdrawalLimit, setDailyWithdrawalLimit] = useState<number>(1000.00);
+  const [referralCommissionRate, setReferralCommissionRate] = useState<number>(20);
 
   // Mining simulation states
   const [miningActive, setMiningActive] = useState<boolean>(false);
   const [miningBalance, setMiningBalance] = useState<number>(0);
+  const [hasInitializedMining, setHasInitializedMining] = useState<boolean>(false);
+
+  // Helper to retrieve live plan daily profit (averaging min/max or using admin value if equal)
+  const getLiveDailyProfit = (ap: ActivePlan, masterPlans: Plan[]) => {
+    const master = masterPlans.find(mp => mp.id === ap.planId);
+    if (master) {
+      return master.minProfit === master.maxProfit 
+        ? master.minProfit 
+        : (master.minProfit + master.maxProfit) / 2;
+    }
+    return ap.dailyProfit;
+  };
+
+  // Calculate offline accumulated profit down to the exact second
+  const calculateInitialMiningBalance = (plansList: ActivePlan[], masterPlans: Plan[]) => {
+    let accumulated = 0;
+    const now = new Date();
+    plansList.forEach(p => {
+      if (p.status === 'active') {
+        const lastCollected = p.lastCollectedAt ? new Date(p.lastCollectedAt) : new Date(p.startDate);
+        const elapsedMs = now.getTime() - lastCollected.getTime();
+        const elapsedSeconds = Math.max(0, elapsedMs / 1000);
+        if (elapsedSeconds > 0) {
+          const liveDaily = getLiveDailyProfit(p, masterPlans);
+          accumulated += (liveDaily / 86400) * elapsedSeconds;
+        }
+      }
+    });
+    return accumulated;
+  };
 
   // Sync Global Settings
   useEffect(() => {
     const settingsRef = doc(db, 'settings', 'global');
-    const unsubscribe = onSnapshot(settingsRef, (snap) => {
+    const unsubscribe = onSnapshot(settingsRef, async (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         setMaintenanceMode(!!data.maintenanceMode);
+        
+        // Sync Merchant Key
+        if (data.oxapayApiKey) {
+          if (data.oxapayApiKey === '9RXYOI-HCC0E7-MIMCXS-XKUCYW' || !data.oxapayApiKey) {
+            try {
+              await setDoc(settingsRef, { oxapayApiKey: 'HLSOHL-M4XCBM-MXMW4B-0BD5YD' }, { merge: true });
+            } catch (e) {
+              console.error('Failed to auto-upgrade OxaPay key in firestore', e);
+            }
+            setOxapayApiKey('HLSOHL-M4XCBM-MXMW4B-0BD5YD');
+          } else {
+            setOxapayApiKey(data.oxapayApiKey);
+          }
+        } else {
+          try {
+            await setDoc(settingsRef, { oxapayApiKey: 'HLSOHL-M4XCBM-MXMW4B-0BD5YD' }, { merge: true });
+          } catch (e) {
+            console.error('Failed to seed OxaPay key', e);
+          }
+          setOxapayApiKey('HLSOHL-M4XCBM-MXMW4B-0BD5YD');
+        }
+
+        // Sync Payout Key
+        if (data.oxapayPayoutApiKey) {
+          setOxapayPayoutApiKey(data.oxapayPayoutApiKey);
+        } else {
+          try {
+            await setDoc(settingsRef, { oxapayPayoutApiKey: 'HLSOHL-M4XCBM-MXMW4B-0BD5YD' }, { merge: true });
+          } catch (e) {
+            console.error('Failed to seed OxaPay payout key', e);
+          }
+          setOxapayPayoutApiKey('HLSOHL-M4XCBM-MXMW4B-0BD5YD');
+        }
+
+        // Sync limits
+        setMinWithdrawal(typeof data.minWithdrawal === 'number' ? data.minWithdrawal : 5.00);
+        setMaxWithdrawal(typeof data.maxWithdrawal === 'number' ? data.maxWithdrawal : 1000.00);
+        setMonthlyWithdrawalLimit(typeof data.monthlyWithdrawalLimit === 'number' ? data.monthlyWithdrawalLimit : 5000.00);
+        setDailyWithdrawalLimit(typeof data.dailyWithdrawalLimit === 'number' ? data.dailyWithdrawalLimit : 1000.00);
+        setReferralCommissionRate(typeof data.referralCommissionRate === 'number' ? data.referralCommissionRate : 20);
+      } else {
+        // Create settings doc if it does not exist
+        try {
+          await setDoc(settingsRef, { 
+            oxapayApiKey: 'HLSOHL-M4XCBM-MXMW4B-0BD5YD', 
+            oxapayPayoutApiKey: 'HLSOHL-M4XCBM-MXMW4B-0BD5YD', 
+            maintenanceMode: false,
+            minWithdrawal: 5.00,
+            maxWithdrawal: 1000.00,
+            monthlyWithdrawalLimit: 5000.00,
+            dailyWithdrawalLimit: 1000.00,
+            referralCommissionRate: 20
+          });
+        } catch (e) {
+          console.error('Failed to create global settings doc', e);
+        }
+        setOxapayApiKey('HLSOHL-M4XCBM-MXMW4B-0BD5YD');
+        setOxapayPayoutApiKey('HLSOHL-M4XCBM-MXMW4B-0BD5YD');
+        setMinWithdrawal(5.00);
+        setMaxWithdrawal(1000.00);
+        setMonthlyWithdrawalLimit(5000.00);
+        setDailyWithdrawalLimit(1000.00);
+        setReferralCommissionRate(20);
       }
     }, (err) => {
       console.error('Error listening to global config:', err);
@@ -113,26 +226,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
 
-  // Calculate offline hourly accumulated profit
-  const calculateInitialMiningBalance = (plansList: ActivePlan[]) => {
-    let accumulated = 0;
-    const now = new Date();
-    plansList.forEach(p => {
-      if (p.status === 'active') {
-        const lastCollected = p.lastCollectedAt ? new Date(p.lastCollectedAt) : new Date(p.startDate);
-        const elapsedMs = now.getTime() - lastCollected.getTime();
-        const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60)); // Whole hours passed
-        if (elapsedHours > 0) {
-          accumulated += (p.dailyProfit / 24) * elapsedHours;
-        }
-      }
-    });
-    return accumulated;
-  };
-
   // Sync Auth State
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      const customUid = localStorage.getItem('dodooge_custom_user_id');
+      
+      if (customUid) {
+        try {
+          const userDocRef = doc(db, 'users', customUid);
+          const userSnap = await getDoc(userDocRef);
+          if (userSnap.exists()) {
+            const userData = userSnap.data() as User;
+            if (userData.isBanned) {
+              setUser(null);
+              setActivePlans([]);
+              setTransactions([]);
+              setHasInitializedMining(false);
+              localStorage.removeItem('dodooge_custom_user_id');
+              return;
+            }
+            setUser(userData);
+
+            const plansSnap = await getDocs(collection(db, 'users', customUid, 'activePlans'));
+            const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
+            setActivePlans(plansList);
+
+            const txsSnap = await getDocs(collection(db, 'users', customUid, 'transactions'));
+            const txsList = txsSnap.docs.map(d => d.data() as Transaction);
+            setTransactions(txsList);
+            return;
+          }
+        } catch (e) {
+          console.error("Custom user loading error:", e);
+        }
+      }
+
       if (fbUser) {
         try {
           const userDocRef = doc(db, 'users', fbUser.uid);
@@ -144,6 +272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               setUser(null);
               setActivePlans([]);
               setTransactions([]);
+              setHasInitializedMining(false);
               alert("Your account has been banned by the Administrator.");
               return;
             }
@@ -159,10 +288,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
             setActivePlans(plansList);
 
-            // Set initial balance including offline hourly accumulated profit
-            const offlineProfit = calculateInitialMiningBalance(plansList);
-            setMiningBalance(offlineProfit);
-
             const txsSnap = await getDocs(collection(db, 'users', fbUser.uid, 'transactions'));
             const txsList = txsSnap.docs.map(d => d.data() as Transaction);
             setTransactions(txsList);
@@ -177,7 +302,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               activeInvestments: 0,
               totalProfit: 0,
               referralCode: refCode,
-              referredBy: localStorage.getItem('doddoge_pending_referral') || null,
+              referredBy: localStorage.getItem('dodooge_pending_referral') || null,
               referralsCount: 0,
               createdAt: new Date().toISOString(),
               firstName: fbUser.displayName ? fbUser.displayName.split(' ')[0] : '',
@@ -189,6 +314,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setUser(newUser);
             setActivePlans([]);
             setTransactions([]);
+            setHasInitializedMining(false);
           }
         } catch (error) {
           console.error("Error fetching verified profile:", error);
@@ -197,6 +323,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUser(null);
         setActivePlans([]);
         setTransactions([]);
+        setHasInitializedMining(false);
       }
     });
 
@@ -243,21 +370,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(interval);
   }, [selectedStock]);
 
+  // Synchronize offline mining balance when activePlans and master plans load
+  useEffect(() => {
+    if (user && activePlans.length > 0 && plans.length > 0 && !hasInitializedMining) {
+      const offlineProfit = calculateInitialMiningBalance(activePlans, plans);
+      setMiningBalance(offlineProfit);
+      setHasInitializedMining(true);
+    }
+  }, [activePlans, plans, user, hasInitializedMining]);
+
+  // Automatically activate mining if there is any active plan
+  useEffect(() => {
+    const hasActive = activePlans.some(p => p.status === 'active' && new Date(p.endDate) > new Date());
+    if (hasActive) {
+      setMiningActive(true);
+    } else {
+      setMiningActive(false);
+    }
+  }, [activePlans]);
+
   // Run auto accumulation of plan profits
   useEffect(() => {
     if (!user || activePlans.length === 0) return;
 
     const interval = setInterval(() => {
       if (miningActive) {
-        const totalDailyProfit = activePlans.reduce((sum, p) => sum + p.dailyProfit, 0);
-        // Make the simulation run 120x faster for user visual engagement
-        const tickProfit = (totalDailyProfit / 86400) * 120; 
+        const totalDailyProfit = activePlans.reduce((sum, p) => sum + getLiveDailyProfit(p, plans), 0);
+        // Make the simulation run at exact 24-hour speed rate as requested
+        const tickProfit = totalDailyProfit / 86400; 
         setMiningBalance(prev => prev + tickProfit);
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [user, activePlans, miningActive]);
+  }, [user, activePlans, miningActive, plans]);
 
   const register = async (
     email: string, 
@@ -305,7 +451,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Check if referral code is valid
       let referredBy: string | null = null;
-      const finalReferralCode = referralCode || localStorage.getItem('doddoge_pending_referral') || null;
+      const finalReferralCode = referralCode || localStorage.getItem('dodooge_pending_referral') || null;
 
       if (finalReferralCode) {
         const q = query(usersRef, where('referralCode', '==', finalReferralCode));
@@ -333,7 +479,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         username: cleanUsername,
-        phone: phone ? phone.trim() : ''
+        phone: phone ? phone.trim() : '',
+        password: password
       };
 
       // Set user profile in Firestore
@@ -341,7 +488,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setUser(newUser);
 
       // Clean pending referral
-      localStorage.removeItem('doddoge_pending_referral');
+      localStorage.removeItem('dodooge_pending_referral');
 
       return { success: true };
     } catch (err: any) {
@@ -366,6 +513,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!password) {
         return { success: false, error: 'Password is required' };
       }
+      const emailLower = email.trim().toLowerCase();
+      
+      // Look up user in Firestore first to check if they have a custom password set by Admin
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('email', '==', emailLower));
+      const querySnap = await getDocs(q);
+      
+      if (!querySnap.empty) {
+        const userDoc = querySnap.docs[0];
+        const userData = userDoc.data() as User;
+        
+        if (userData.password && userData.password === password) {
+          if (userData.isBanned) {
+            return { success: false, error: 'Your account has been banned by the Administrator.' };
+          }
+          
+          try {
+            await signOut(auth);
+          } catch (e) {
+            // ignore
+          }
+          
+          setUser(userData);
+          localStorage.setItem('dodooge_custom_user_id', userData.id);
+          
+          const plansSnap = await getDocs(collection(db, 'users', userData.id, 'activePlans'));
+          const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
+          setActivePlans(plansList);
+
+          const txsSnap = await getDocs(collection(db, 'users', userData.id, 'transactions'));
+          const txsList = txsSnap.docs.map(d => d.data() as Transaction);
+          setTransactions(txsList);
+          
+          return { success: true };
+        }
+      }
+
       const userCred = await signInWithEmailAndPassword(auth, email, password);
       const fbUser = userCred.user;
 
@@ -383,15 +567,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await updateDoc(userDocRef, { isVerified: true });
           userData.isVerified = true;
         }
+        
+        // Save the registered password in Firestore if it was missing
+        if (!userData.password && password) {
+          await updateDoc(userDocRef, { password: password });
+          userData.password = password;
+        }
+        
         setUser(userData);
+        localStorage.removeItem('dodooge_custom_user_id');
 
         const plansSnap = await getDocs(collection(db, 'users', fbUser.uid, 'activePlans'));
         const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
         setActivePlans(plansList);
-
-        // Set initial balance including offline hourly accumulated profit
-        const offlineProfit = calculateInitialMiningBalance(plansList);
-        setMiningBalance(offlineProfit);
 
         const txsSnap = await getDocs(collection(db, 'users', fbUser.uid, 'transactions'));
         const txsList = txsSnap.docs.map(d => d.data() as Transaction);
@@ -427,7 +615,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // Check if referral code is valid
         let referredBy: string | null = null;
-        const finalReferralCode = referralCode || localStorage.getItem('doddoge_pending_referral') || null;
+        const finalReferralCode = referralCode || localStorage.getItem('dodooge_pending_referral') || null;
 
         if (finalReferralCode) {
           const usersRef = collection(db, 'users');
@@ -481,17 +669,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
         setActivePlans(plansList);
 
-        // Set initial balance including offline hourly accumulated profit
-        const offlineProfit = calculateInitialMiningBalance(plansList);
-        setMiningBalance(offlineProfit);
-
         const txsSnap = await getDocs(collection(db, 'users', fbUser.uid, 'transactions'));
         const txsList = txsSnap.docs.map(d => d.data() as Transaction);
         setTransactions(txsList);
       }
 
       // Clean pending referral
-      localStorage.removeItem('doddoge_pending_referral');
+      localStorage.removeItem('dodooge_pending_referral');
 
       return { success: true };
     } catch (err: any) {
@@ -519,32 +703,131 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const deposit = async (amount: number, method: string) => {
-    if (!user) return;
-
-    const newTx: Transaction = {
-      id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
-      type: 'deposit',
-      amount,
-      status: 'completed',
-      date: new Date().toLocaleString(),
-      txHash: '0x' + Math.random().toString(16).substring(2, 18) + '...'
-    };
+  const deposit = async (amount: number, method: string): Promise<{ success: boolean; trackId?: string; paymentUrl?: string; error?: string }> => {
+    if (!user) return { success: false, error: 'User session not found' };
 
     try {
-      // Save transaction to subcollection
+      const res = await createOxaPayInvoice(oxapayApiKey, amount, user.id);
+      if (!res.success) {
+        return { success: false, error: res.error };
+      }
+
+      const newTx: Transaction = {
+        id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
+        type: 'deposit',
+        amount,
+        status: 'pending',
+        date: new Date().toLocaleString(),
+        trackId: res.trackId,
+        paymentUrl: res.paymentUrl
+      };
+
+      // Save pending transaction to user's transactions subcollection
       const txDocRef = doc(db, 'users', user.id, 'transactions', newTx.id);
       await setDoc(txDocRef, newTx);
 
-      // Update balance
-      const newBalance = Number((user.balance + amount).toFixed(2));
-      await updateDoc(doc(db, 'users', user.id), { balance: newBalance });
-
-      // Synchronize states
+      // Sync state
       setTransactions(prev => [newTx, ...prev]);
-      setUser(prev => prev ? { ...prev, balance: newBalance } : null);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
+
+      return {
+        success: true,
+        trackId: res.trackId,
+        paymentUrl: res.paymentUrl
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'An unexpected error occurred during deposit initialization' };
+    }
+  };
+
+  const verifyDeposit = async (trackId: string): Promise<{ success: boolean; message: string; amount?: number }> => {
+    if (!user) return { success: false, message: 'User session not found' };
+
+    try {
+      const checkRes = await checkOxaPayPayment(oxapayApiKey, trackId);
+      if (checkRes.success && (checkRes.status.toLowerCase() === 'paid' || checkRes.status.toLowerCase() === 'confirming' || checkRes.status.toLowerCase() === 'completed' || checkRes.status.toLowerCase() === 'success')) {
+        // Find the transaction with this trackId
+        const pendingTx = transactions.find(t => t.trackId === trackId && t.type === 'deposit');
+        if (!pendingTx) {
+          return { success: false, message: 'Transaction record not found in history' };
+        }
+
+        if (pendingTx.status === 'completed') {
+          return { success: true, message: 'This deposit has already been verified and credited!', amount: pendingTx.amount };
+        }
+
+        const depositAmount = pendingTx.amount;
+
+        // 1. Update the transaction status in Firestore
+        const txDocRef = doc(db, 'users', user.id, 'transactions', pendingTx.id);
+        await updateDoc(txDocRef, { status: 'completed' });
+
+        // 2. Update the user balance in Firestore
+        const newBalance = Number((user.balance + depositAmount).toFixed(2));
+        await updateDoc(doc(db, 'users', user.id), { balance: newBalance });
+
+        // 3. Update local state
+        setTransactions(prev => prev.map(t => t.id === pendingTx.id ? { ...t, status: 'completed' as const } : t));
+        setUser(prev => prev ? { ...prev, balance: newBalance } : null);
+
+        return { success: true, message: `Deposit of $${depositAmount} USDT successfully verified and credited!`, amount: depositAmount };
+      } else {
+        const currentStatus = checkRes.status || 'PENDING';
+        return { success: false, message: `Payment status is ${currentStatus.toUpperCase()}. Please complete the payment first.` };
+      }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to verify transaction' };
+    }
+  };
+
+  const updateOxapayApiKey = async (newKey: string) => {
+    try {
+      const settingsRef = doc(db, 'settings', 'global');
+      await setDoc(settingsRef, { oxapayApiKey: newKey }, { merge: true });
+      setOxapayApiKey(newKey);
+    } catch (err) {
+      console.error('Error updating OxaPay Key:', err);
+      throw err;
+    }
+  };
+
+  const updateOxapayPayoutApiKey = async (newKey: string) => {
+    try {
+      const settingsRef = doc(db, 'settings', 'global');
+      await setDoc(settingsRef, { oxapayPayoutApiKey: newKey }, { merge: true });
+      setOxapayPayoutApiKey(newKey);
+    } catch (err) {
+      console.error('Error updating OxaPay Payout Key:', err);
+      throw err;
+    }
+  };
+
+  const updateWithdrawalLimits = async (minW: number, maxW: number, monthlyW: number, dailyW: number) => {
+    try {
+      const settingsRef = doc(db, 'settings', 'global');
+      await setDoc(settingsRef, { 
+        minWithdrawal: minW, 
+        maxWithdrawal: maxW, 
+        monthlyWithdrawalLimit: monthlyW, 
+        dailyWithdrawalLimit: dailyW 
+      }, { merge: true });
+      setMinWithdrawal(minW);
+      setMaxWithdrawal(maxW);
+      setMonthlyWithdrawalLimit(monthlyW);
+      setDailyWithdrawalLimit(dailyW);
+    } catch (err) {
+      console.error('Error updating withdrawal limits:', err);
+      throw err;
+    }
+  };
+
+  const updateReferralCommissionRate = async (rate: number) => {
+    try {
+      const settingsRef = doc(db, 'settings', 'global');
+      await setDoc(settingsRef, { referralCommissionRate: rate }, { merge: true });
+      setReferralCommissionRate(rate);
+    } catch (err) {
+      console.error('Error updating referral commission rate:', err);
+      throw err;
     }
   };
 
@@ -554,13 +837,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'Insufficient balance' };
     }
 
+    const fee = 0.25;
+    const netAmount = Number((amount - fee).toFixed(2));
+    if (netAmount <= 0) {
+      return { success: false, error: 'Withdrawal amount must be greater than the $0.25 USDT fee.' };
+    }
+
+    // Validate limits
+    const getTxTime = (tx: Transaction): number => {
+      if (tx.timestamp) return tx.timestamp;
+      try {
+        const d = new Date(tx.date);
+        if (!isNaN(d.getTime())) return d.getTime();
+      } catch (e) {
+        // ignore
+      }
+      return 0;
+    };
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    const withdraws = transactions.filter(t => t.type === 'withdraw' && t.status !== 'rejected');
+
+    const dailyTotal = withdraws
+      .filter(t => getTxTime(t) >= startOfToday)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const monthlyTotal = withdraws
+      .filter(t => getTxTime(t) >= startOfThisMonth)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    if (amount < minWithdrawal) {
+      return { success: false, error: `Minimum withdrawal quantity allowed is $${minWithdrawal.toFixed(2)} USDT` };
+    }
+
+    if (amount > maxWithdrawal) {
+      return { success: false, error: `Maximum withdrawal quantity allowed is $${maxWithdrawal.toFixed(2)} USDT per transaction` };
+    }
+
+    if (dailyTotal + amount > dailyWithdrawalLimit) {
+      return { 
+        success: false, 
+        error: `This withdrawal would exceed your daily withdrawal limit of $${dailyWithdrawalLimit.toFixed(2)} USDT. You have already withdrawn $${dailyTotal.toFixed(2)} USDT today. Remaining: $${Math.max(0, dailyWithdrawalLimit - dailyTotal).toFixed(2)} USDT.` 
+      };
+    }
+
+    if (monthlyTotal + amount > monthlyWithdrawalLimit) {
+      return { 
+        success: false, 
+        error: `This withdrawal would exceed your monthly withdrawal limit of $${monthlyWithdrawalLimit.toFixed(2)} USDT. You have already withdrawn $${monthlyTotal.toFixed(2)} USDT this month. Remaining: $${Math.max(0, monthlyWithdrawalLimit - monthlyTotal).toFixed(2)} USDT.` 
+      };
+    }
+
     const newTx: Transaction = {
       id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
       type: 'withdraw',
-      amount,
+      amount, // Total gross amount deducted from user balance
       status: 'pending',
       date: new Date().toLocaleString(),
-      txHash: address
+      txHash: address,
+      address: address, // Set both so legacy and new structures read it
+      fee,
+      netAmount,
+      timestamp: Date.now()
     };
 
     try {
@@ -587,6 +928,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!user) return { success: false, error: 'User not logged in' };
     const plan = plans.find(p => p.id === planId);
     if (!plan) return { success: false, error: 'Plan not found' };
+
+    const hasSamePlanActive = activePlans.some(p => p.planId === planId && p.status === 'active' && new Date(p.endDate) > new Date());
+    if (hasSamePlanActive) {
+      return { success: false, error: 'You already have an active contract for this plan. You cannot buy the same plan again until it expires.' };
+    }
+
     if (user.balance < plan.price) {
       return { success: false, error: 'Insufficient balance to purchase this plan. Please deposit more funds first.' };
     }
@@ -637,7 +984,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!querySnap.empty) {
           const referrerDoc = querySnap.docs[0];
           const referrerData = referrerDoc.data();
-          const commission = Number((plan.price * 0.20).toFixed(2));
+          const commRate = typeof referralCommissionRate === 'number' ? referralCommissionRate : 20;
+          const commission = Number((plan.price * (commRate / 100)).toFixed(2));
 
           const newRefBalance = Number((referrerData.balance + commission).toFixed(2));
           const newRefProfit = Number((referrerData.totalProfit + commission).toFixed(2));
@@ -774,7 +1122,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       triggerMiningPayout,
       referrals,
       maintenanceMode,
-      plans
+      plans,
+      oxapayApiKey,
+      oxapayPayoutApiKey,
+      updateOxapayApiKey,
+      updateOxapayPayoutApiKey,
+      verifyDeposit,
+      minWithdrawal,
+      maxWithdrawal,
+      monthlyWithdrawalLimit,
+      dailyWithdrawalLimit,
+      updateWithdrawalLimits,
+      referralCommissionRate,
+      updateReferralCommissionRate
     }}>
       {children}
     </AppContext.Provider>

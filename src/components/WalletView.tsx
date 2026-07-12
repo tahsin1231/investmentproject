@@ -4,44 +4,87 @@ import { translations } from '../utils/translations';
 import { ArrowDownLeft, ArrowUpRight, DollarSign, Clock, HelpCircle, Copy, Check, QrCode } from 'lucide-react';
 
 export const WalletView: React.FC = () => {
-  const { user, transactions, deposit, withdraw, language } = useApp();
+  const { 
+    user, 
+    transactions, 
+    deposit, 
+    verifyDeposit, 
+    withdraw, 
+    language,
+    minWithdrawal,
+    maxWithdrawal,
+    dailyWithdrawalLimit,
+    monthlyWithdrawalLimit
+  } = useApp();
   const t = translations[language];
 
   const [activeSubTab, setActiveSubTab] = useState<'deposit' | 'withdraw' | 'history'>('deposit');
   const [depositAmount, setDepositAmount] = useState('100');
-  const [depositMethod, setDepositMethod] = useState('USDT (TRC20)');
+  const [depositMethod, setDepositMethod] = useState('USDT');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawAddress, setWithdrawAddress] = useState('');
   
-  const [copiedAddress, setCopiedAddress] = useState(false);
   const [depositSuccess, setDepositSuccess] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
 
-  const mockCryptoAddresses: Record<string, string> = {
-    'USDT (TRC20)': 'TY6Ssh98WpY8m8Hj8sK8n9A1F4S5hL8mNp',
-    'BTC': '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
-    'ETH': '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
-    'USDT (ERC20)': '0xdAC17F958D2ee523a2206206994597C13D831ec7'
-  };
+  // Oxapay specific states
+  const [oxapayLoading, setOxapayLoading] = useState(false);
+  const [oxapayError, setOxapayError] = useState<string | null>(null);
+  const [activeInvoice, setActiveInvoice] = useState<{ trackId: string; paymentUrl: string; amount: number } | null>(null);
+  const [verifyingTxId, setVerifyingTxId] = useState<string | null>(null);
+  const [verifyingMessage, setVerifyingMessage] = useState<string | null>(null);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(mockCryptoAddresses[depositMethod]);
-    setCopiedAddress(true);
-    setTimeout(() => setCopiedAddress(false), 2000);
-  };
-
-  const handleDepositSubmit = (e: React.FormEvent) => {
+  const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setOxapayError(null);
+    setDepositSuccess(false);
     const amt = parseFloat(depositAmount);
-    if (isNaN(amt) || amt <= 0) return;
+    if (isNaN(amt) || amt <= 0) {
+      setOxapayError('Please enter a valid deposit amount');
+      return;
+    }
     
-    deposit(amt, depositMethod);
-    setDepositSuccess(true);
-    setTimeout(() => setDepositSuccess(false), 3000);
+    setOxapayLoading(true);
+    try {
+      const result = await deposit(amt, depositMethod);
+      if (result.success && result.trackId && result.paymentUrl) {
+        setActiveInvoice({
+          trackId: result.trackId,
+          paymentUrl: result.paymentUrl,
+          amount: amt
+        });
+        setDepositSuccess(true);
+      } else {
+        setOxapayError(result.error || 'Failed to generate payment invoice.');
+      }
+    } catch (err: any) {
+      setOxapayError(err.message || 'An error occurred during invoice generation.');
+    } finally {
+      setOxapayLoading(false);
+    }
   };
 
-  const handleWithdrawSubmit = (e: React.FormEvent) => {
+  const handleVerifyInvoice = async (trackId: string, txId?: string) => {
+    if (txId) setVerifyingTxId(txId);
+    setVerifyingMessage('Checking payment status on blockchain...');
+    try {
+      const res = await verifyDeposit(trackId);
+      alert(res.message);
+      if (res.success) {
+        if (activeInvoice && activeInvoice.trackId === trackId) {
+          setActiveInvoice(null);
+        }
+      }
+    } catch (err: any) {
+      alert(err.message || 'Verification failed');
+    } finally {
+      setVerifyingMessage(null);
+      if (txId) setVerifyingTxId(null);
+    }
+  };
+
+  const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setWithdrawError(null);
     setWithdrawSuccess(false);
@@ -51,18 +94,36 @@ export const WalletView: React.FC = () => {
       setWithdrawError('Provide a valid withdrawal quantity');
       return;
     }
-    if (!withdrawAddress) {
-      setWithdrawError('Provide a destination network address');
+
+    if (amt <= 0.25) {
+      setWithdrawError('Withdrawal quantity must be greater than the $0.25 USDT fee');
       return;
     }
 
-    const result = withdraw(amt, withdrawAddress);
-    if (result.success) {
-      setWithdrawSuccess(true);
-      setWithdrawAmount('');
-      setWithdrawAddress('');
-    } else {
-      setWithdrawError(result.error || 'Withdrawal failed');
+    if (!withdrawAddress) {
+      setWithdrawError('Provide a destination BSC/BEP20 address');
+      return;
+    }
+
+    // BSC/BEP20 address check: starts with 0x and is 42 hex chars long
+    const cleanAddress = withdrawAddress.trim();
+    const isBscAddress = /^0x[a-fA-F0-9]{40}$/.test(cleanAddress);
+    if (!isBscAddress) {
+      setWithdrawError('Invalid USDT BEP20 wallet address. It must be a Binance Smart Chain (BSC) address starting with "0x" followed by 40 hex characters.');
+      return;
+    }
+
+    try {
+      const result = await withdraw(amt, cleanAddress);
+      if (result.success) {
+        setWithdrawSuccess(true);
+        setWithdrawAmount('');
+        setWithdrawAddress('');
+      } else {
+        setWithdrawError(result.error || 'Withdrawal failed');
+      }
+    } catch (err: any) {
+      setWithdrawError(err.message || 'Withdrawal request failed');
     }
   };
 
@@ -123,7 +184,7 @@ export const WalletView: React.FC = () => {
                 : 'text-emerald-500/60 hover:text-emerald-400 hover:bg-slate-900/50'
             }`}
           >
-            {t.deposit}
+            Deposit
           </button>
           <button
             onClick={() => { setActiveSubTab('withdraw'); setDepositSuccess(false); }}
@@ -133,7 +194,7 @@ export const WalletView: React.FC = () => {
                 : 'text-emerald-500/60 hover:text-emerald-400 hover:bg-slate-900/50'
             }`}
           >
-            {t.withdrawTitle.split('/')[0].trim()}
+            Withdraw
           </button>
           <button
             onClick={() => { setActiveSubTab('history'); setDepositSuccess(false); setWithdrawSuccess(false); }}
@@ -143,80 +204,121 @@ export const WalletView: React.FC = () => {
                 : 'text-emerald-500/60 hover:text-emerald-400 hover:bg-slate-900/50'
             }`}
           >
-            {t.historyTitle.split('/')[0].trim()}
+            Transaction History
           </button>
         </div>
 
         {/* Deposit Panel */}
         {activeSubTab === 'deposit' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <form onSubmit={handleDepositSubmit} className="space-y-4">
-              <h3 className="font-bold text-white text-xs uppercase mb-2">USDT_DEPOSIT_LEDGER</h3>
-              
-              <div>
-                <label className="block text-[9px] text-emerald-500/60 uppercase mb-1">{t.depositAmount}</label>
-                <input
-                  type="number"
-                  min="10"
-                  step="1"
-                  required
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  className="w-full bg-slate-900 border border-emerald-500/20 focus:border-emerald-400 rounded py-2 px-3 text-xs text-white focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[9px] text-emerald-500/60 uppercase mb-1">{t.depositMethod}</label>
-                <select
-                  value={depositMethod}
-                  onChange={(e) => setDepositMethod(e.target.value)}
-                  className="w-full bg-slate-900 border border-emerald-500/20 focus:border-emerald-400 rounded py-2 px-3 text-xs text-white focus:outline-none"
-                >
-                  <option value="USDT (TRC20)">USDT (TRC20 Protocol)</option>
-                  <option value="USDT (ERC20)">USDT (ERC20 Protocol)</option>
-                  <option value="BTC">Bitcoin (BTC Chain)</option>
-                  <option value="ETH">Ethereum (ERC20)</option>
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-4 rounded text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider"
-              >
-                <ArrowDownLeft className="w-4 h-4" />
-                <span>{t.confirmDeposit}</span>
-              </button>
-
-              {depositSuccess && (
-                <div className="bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 rounded p-2 text-center text-[10px] uppercase">
-                  FUND_INJECT_SUCCESS: Balance updated immediately.
+            {activeInvoice ? (
+              <div className="bg-slate-900 border border-emerald-500/20 rounded-lg p-5 space-y-4 flex flex-col justify-center">
+                <div className="text-center">
+                  <h3 className="font-bold text-white text-xs uppercase mb-1">OxaPay Crypto Invoice</h3>
+                  <p className="text-[9px] text-emerald-500/40 uppercase">A secure invoice has been compiled</p>
                 </div>
-              )}
-            </form>
+                
+                <div className="bg-slate-950 p-4 border border-emerald-500/10 rounded-lg text-center space-y-1">
+                  <div className="text-[10px] text-emerald-500/50 uppercase">Transfer Amount</div>
+                  <div className="text-xl font-bold text-white">${activeInvoice.amount} USDT</div>
+                  <div className="text-[8px] text-emerald-500/30 uppercase font-mono">Invoice Tracker ID: {activeInvoice.trackId}</div>
+                </div>
 
-            {/* QR Code */}
-            <div className="bg-slate-900 border border-emerald-500/20 rounded-lg p-4 flex flex-col items-center justify-center text-center">
-              <div className="w-24 h-24 bg-white p-1 rounded mb-3 flex items-center justify-center">
-                <QrCode className="w-20 h-20 text-slate-950" />
+                <div className="space-y-2 font-mono">
+                  <a
+                    href={activeInvoice.paymentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-4 rounded text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider text-center"
+                  >
+                    <span>Proceed to Pay</span>
+                    <ArrowUpRight className="w-4 h-4" />
+                  </a>
+
+                  <button
+                    onClick={() => handleVerifyInvoice(activeInvoice.trackId)}
+                    disabled={!!verifyingMessage}
+                    className="w-full bg-slate-950 border border-emerald-500/20 hover:border-emerald-500/50 text-emerald-400 font-bold py-2.5 px-4 rounded text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider"
+                  >
+                    {verifyingMessage ? 'Verifying payment...' : 'Confirm / Verify Payment'}
+                  </button>
+                  
+                  <button
+                    onClick={() => setActiveInvoice(null)}
+                    className="text-[9px] text-emerald-500/40 hover:text-emerald-500/80 uppercase block mx-auto transition-colors"
+                  >
+                    Dismiss (You can verify later in History)
+                  </button>
+                </div>
               </div>
+            ) : (
+              <form onSubmit={handleDepositSubmit} className="space-y-4">
+                <h3 className="font-bold text-white text-xs uppercase mb-2">Automated OxaPay Deposit</h3>
+                
+                <div>
+                  <label className="block text-[9px] text-emerald-500/60 uppercase mb-1">Deposit Amount (USDT)</label>
+                  <input
+                    type="number"
+                    min="10"
+                    step="1"
+                    required
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    className="w-full bg-slate-900 border border-emerald-500/20 focus:border-emerald-400 rounded py-2 px-3 text-xs text-white focus:outline-none font-mono"
+                  />
+                </div>
 
-              <span className="text-[9px] text-emerald-500/40 uppercase mb-1 font-bold">LEDGER TARGET ADDRESS ({depositMethod})</span>
-              <div className="flex items-center space-x-2 bg-slate-950 border border-emerald-500/20 rounded px-2.5 py-1.5 w-full justify-between mb-3">
-                <span className="text-[9px] text-emerald-400 truncate pr-2 select-all font-mono">
-                  {mockCryptoAddresses[depositMethod]}
-                </span>
+                <div>
+                  <label className="block text-[9px] text-emerald-500/60 uppercase mb-1">Asset Protocol</label>
+                  <select
+                    value={depositMethod}
+                    onChange={(e) => setDepositMethod(e.target.value)}
+                    className="w-full bg-slate-900 border border-emerald-500/20 focus:border-emerald-400 rounded py-2 px-3 text-xs text-white focus:outline-none font-mono"
+                  >
+                    <option value="USDT">USDT (Supports TRC20, ERC20 & BEP20 via OxaPay)</option>
+                  </select>
+                </div>
+
                 <button
-                  onClick={handleCopy}
-                  className="text-emerald-500 hover:text-white p-1 shrink-0 transition-colors cursor-pointer"
+                  type="submit"
+                  disabled={oxapayLoading}
+                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-4 rounded text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider"
                 >
-                  {copiedAddress ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  {oxapayLoading ? (
+                    <span>Generating Secure Invoice...</span>
+                  ) : (
+                    <>
+                      <ArrowDownLeft className="w-4 h-4" />
+                      <span>Generate Payment Invoice</span>
+                    </>
+                  )}
                 </button>
+
+                {oxapayError && (
+                  <div className="bg-red-500/10 border border-red-500/40 text-red-400 rounded p-2 text-center text-[10px] uppercase">
+                    Error: {oxapayError}
+                  </div>
+                )}
+              </form>
+            )}
+
+            {/* OxaPay gateway info */}
+            <div className="bg-slate-900 border border-emerald-500/20 rounded-lg p-5 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 p-1 rounded-full flex items-center justify-center text-emerald-400">
+                <QrCode className="w-8 h-8" />
               </div>
 
-              <p className="text-[9px] text-emerald-500/40 uppercase leading-relaxed max-w-[200px]">
-                Send only compatible protocol tokens. Cross-chain transfer results in terminal loss.
+              <h4 className="text-xs font-bold text-white uppercase">Secured by OxaPay</h4>
+              <p className="text-[10px] text-emerald-500/60 uppercase leading-relaxed max-w-[240px]">
+                We use OxaPay decentralized processing network for zero-delay payment settlement.
               </p>
+              
+              <div className="text-[9px] text-left bg-slate-950 p-3 rounded border border-emerald-500/10 space-y-1.5 w-full font-mono text-emerald-500/50">
+                <div className="font-bold text-white uppercase mb-1">How it works:</div>
+                <div>1. Enter deposit amount & generate invoice.</div>
+                <div>2. Choose your preferred crypto protocol at checkout.</div>
+                <div>3. After transfer, click "Verify" to credit instantly.</div>
+              </div>
             </div>
           </div>
         )}
@@ -224,58 +326,88 @@ export const WalletView: React.FC = () => {
         {/* Withdraw Panel */}
         {activeSubTab === 'withdraw' && (
           <form onSubmit={handleWithdrawSubmit} className="space-y-4 max-w-lg">
-            <h3 className="font-bold text-white text-xs uppercase mb-2">OUTBOUND_CRYPTO_SETTLE</h3>
+            <h3 className="font-bold text-white text-xs uppercase mb-2">Withdraw Funds</h3>
             
-            <div className="bg-amber-500/5 border border-amber-500/20 rounded p-3 flex items-start space-x-2 text-[10px] text-amber-500 uppercase leading-relaxed mb-3">
-              <HelpCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>
-                NOTICE: Active subscription levels are cold locked for exactly 30 days. Accrued yield balances and manual funding can be settled with zero outbound delay.
-              </span>
+            <div className="bg-amber-500/5 border border-amber-500/20 rounded p-3 flex flex-col space-y-1.5 text-[10px] text-amber-500 uppercase leading-relaxed mb-3">
+              <div className="flex items-start space-x-2">
+                <HelpCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  NOTICE: Accrued profit and available balances can be withdrawn instantly once approved by the administrator. Withdrawals are restricted to the Binance Smart Chain (USDT BEP20) network.
+                </span>
+              </div>
+              <div className="border-t border-amber-500/10 pt-1.5 grid grid-cols-2 gap-2 text-[9px] text-amber-400 font-mono">
+                <div>MIN WITHDRAWAL: ${minWithdrawal?.toFixed(2)} USDT</div>
+                <div>MAX WITHDRAWAL: ${maxWithdrawal?.toFixed(2)} USDT</div>
+                <div>DAILY LIMIT: ${dailyWithdrawalLimit?.toFixed(2)} USDT</div>
+                <div>MONTHLY LIMIT: ${monthlyWithdrawalLimit?.toFixed(2)} USDT</div>
+              </div>
             </div>
 
             {withdrawError && (
-              <div className="bg-red-500/10 border border-red-500/40 text-red-400 rounded p-2 text-[10px] uppercase">
+              <div className="bg-red-500/10 border border-red-500/40 text-red-400 rounded p-2 text-[10px] uppercase font-mono">
                 ERROR: {withdrawError}
               </div>
             )}
 
             {withdrawSuccess && (
-              <div className="bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 rounded p-2 text-[10px] uppercase text-center">
-                WITHDRAW_PENDING: Cryptographic verification signature active.
+              <div className="bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 rounded p-2 text-[10px] uppercase text-center font-mono">
+                WITHDRAWAL REQUEST SENT: Your request is queued for administrator review and real OxaPay BSC execution.
               </div>
             )}
 
             <div>
-              <label className="block text-[9px] text-emerald-500/60 uppercase mb-1">{t.withdrawAmount}</label>
+              <label className="block text-[9px] text-emerald-500/60 uppercase mb-1">Withdrawal Amount ($)</label>
               <input
                 type="number"
                 min="5"
+                step="any"
                 placeholder="0.00"
                 required
                 value={withdrawAmount}
                 onChange={(e) => setWithdrawAmount(e.target.value)}
-                className="w-full bg-slate-900 border border-emerald-500/20 focus:border-emerald-400 rounded py-2 px-3 text-xs text-white focus:outline-none"
+                className="w-full bg-slate-900 border border-emerald-500/20 focus:border-emerald-400 rounded py-2 px-3 text-xs text-white focus:outline-none font-mono"
               />
             </div>
 
             <div>
-              <label className="block text-[9px] text-emerald-500/60 uppercase mb-1">{t.withdrawAddress}</label>
+              <label className="block text-[9px] text-emerald-500/60 uppercase mb-1">Destination USDT BEP20 Wallet Address (BSC)</label>
               <input
                 type="text"
-                placeholder="T... or 0x..."
+                placeholder="0x... (Binance Smart Chain BEP-20 address only)"
                 required
                 value={withdrawAddress}
                 onChange={(e) => setWithdrawAddress(e.target.value)}
-                className="w-full bg-slate-900 border border-emerald-500/20 focus:border-emerald-400 rounded py-2 px-3 text-xs text-white focus:outline-none"
+                className="w-full bg-slate-900 border border-emerald-500/20 focus:border-emerald-400 rounded py-2 px-3 text-xs text-white focus:outline-none font-mono"
               />
+            </div>
+
+            {/* Real-time Fee and Estimated Payout Breakdown */}
+            <div className="bg-slate-950 p-3 rounded-lg border border-emerald-500/10 space-y-1.5 text-[10px] font-mono text-emerald-500/70">
+              <div className="flex justify-between">
+                <span>Requested Gross Amount:</span>
+                <span className="text-white">${(parseFloat(withdrawAmount) || 0).toFixed(2)} USDT</span>
+              </div>
+              <div className="flex justify-between text-red-400/80">
+                <span>Withdrawal Transaction Fee:</span>
+                <span>-$0.25 USDT</span>
+              </div>
+              <div className="border-t border-emerald-500/10 my-1 pt-1 flex justify-between font-bold text-emerald-400">
+                <span>Estimated Net Payout:</span>
+                <span className="text-emerald-300">
+                  ${Math.max(0, (parseFloat(withdrawAmount) || 0) - 0.25).toFixed(2)} USDT
+                </span>
+              </div>
+              <p className="text-[8px] text-emerald-500/40 uppercase mt-1 leading-normal">
+                Payout is processed automatically to your BEP20 wallet once approved in the admin queue.
+              </p>
             </div>
 
             <button
               type="submit"
-              className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-4 rounded text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider"
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-4 rounded text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider font-mono"
             >
               <ArrowUpRight className="w-4 h-4" />
-              <span>{t.confirmWithdraw}</span>
+              <span>Confirm Withdrawal</span>
             </button>
           </form>
         )}
@@ -286,12 +418,12 @@ export const WalletView: React.FC = () => {
             <h3 className="font-bold text-white text-xs uppercase mb-2">SYSTEM_TRANSACTION_LOG</h3>
             
             {transactions.length === 0 ? (
-              <p className="text-emerald-500/40 text-xs text-center py-6 uppercase">No localized transactions identified on this node.</p>
+              <p className="text-emerald-500/40 text-xs text-center py-6 uppercase">No transactions identified on this account.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-[10px] border-collapse uppercase">
                   <thead>
-                    <tr className="text-emerald-500/50 border-b border-emerald-500/20 pb-2 text-[9px] tracking-wider">
+                    <tr className="text-emerald-500/50 border-b border-emerald-500/20 pb-2 text-[9px] tracking-wider font-mono">
                       <th className="py-2 hidden sm:table-cell">TX_ID</th>
                       <th className="py-2">TYPE</th>
                       <th className="py-2 text-right">VOLUME</th>
@@ -301,7 +433,7 @@ export const WalletView: React.FC = () => {
                   </thead>
                   <tbody>
                     {transactions.map((tx) => (
-                      <tr key={tx.id} className="border-b border-emerald-500/10 hover:bg-slate-900/40 text-emerald-400/80">
+                      <tr key={tx.id} className="border-b border-emerald-500/10 hover:bg-slate-900/40 text-emerald-400/80 font-mono">
                         <td className="py-2 font-semibold text-emerald-400 hidden sm:table-cell">0x{tx.id.slice(0, 8)}</td>
                         <td className="py-2">
                           <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold ${
@@ -318,10 +450,22 @@ export const WalletView: React.FC = () => {
                           {tx.type === 'deposit' || tx.type === 'profit' || tx.type === 'referral' ? '+' : '-'}${tx.amount.toFixed(2)}
                         </td>
                         <td className="py-2">
-                          <span className="flex items-center gap-1 text-[9px] text-emerald-300">
-                             <Clock className="w-3 h-3 text-emerald-400" />
-                             <span>{tx.status}</span>
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                              tx.status === 'completed' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                            }`}>
+                              {tx.status}
+                            </span>
+                            {tx.type === 'deposit' && tx.status === 'pending' && tx.trackId && (
+                              <button
+                                onClick={() => handleVerifyInvoice(tx.trackId!, tx.id)}
+                                disabled={verifyingTxId === tx.id}
+                                className="px-2 py-0.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded text-[9px] font-bold cursor-pointer transition-all uppercase font-mono"
+                              >
+                                {verifyingTxId === tx.id ? '...' : 'Verify'}
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2 text-emerald-500/40 hidden sm:table-cell">{tx.date}</td>
                       </tr>

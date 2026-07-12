@@ -17,7 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
     <header className="border-b border-emerald-500/30 bg-slate-950 font-mono text-emerald-400">
       
       {/* Top Telemetry Header Rail */}
-      <div className="bg-slate-950 border-b border-emerald-500/10 px-4 py-1 flex flex-col sm:flex-row sm:justify-between items-center text-[10px] uppercase text-emerald-500/50 gap-2">
+      <div className="hidden sm:flex bg-slate-950 border-b border-emerald-500/10 px-4 py-1 justify-between items-center text-[10px] uppercase text-emerald-500/50 gap-2">
         <div className="flex items-center space-x-4">
           <span>HOST: SITECHAI_V11</span>
           <span className="hidden md:inline">•</span>
@@ -41,23 +41,23 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
           >
             <img 
               src="https://iili.io/C1qgH3x.jpg" 
-              alt="DODDOGE Logo" 
+              alt="DODOOGE Logo" 
               className="w-11 h-11 rounded-full border border-emerald-500/40 object-cover shadow-[0_0_8px_rgba(16,185,129,0.2)]"
               referrerPolicy="no-referrer"
             />
             <span className="font-display font-bold text-white tracking-wider xs:tracking-widest text-sm xs:text-base group-hover:text-emerald-400 transition-colors uppercase crt-flicker">
-              DODDOGE<span className="hidden xs:inline text-emerald-500">_CLI</span>
+              DODOOGE<span className="hidden xs:inline text-emerald-500">_CLI</span>
             </span>
           </div>
         </div>
 
         {/* Right Side */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
           {/* Language Selector */}
           <div className="relative group">
-            <button className="flex items-center space-x-1 text-emerald-500/70 hover:text-emerald-400 px-2 py-1.5 rounded text-xs font-bold transition-colors cursor-pointer">
+            <button className="flex items-center space-x-1 text-emerald-500/70 hover:text-emerald-400 px-1 py-1.5 sm:px-2 rounded text-xs font-bold transition-colors cursor-pointer">
               <Globe className="w-3.5 h-3.5" />
-              <span>{language.toUpperCase()}</span>
+              <span className="hidden xs:inline">{language.toUpperCase()}</span>
             </button>
             <div className="absolute right-0 top-full mt-1 bg-slate-900 border border-emerald-500/30 rounded shadow-xl py-1 hidden group-hover:block w-28 z-50">
               <button

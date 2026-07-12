@@ -15,6 +15,7 @@ export interface User {
   phone?: string;
   isBanned?: boolean;
   banReason?: string;
+  password?: string;
 }
 
 export interface Plan {
@@ -53,7 +54,15 @@ export interface Transaction {
   id: string;
   type: 'deposit' | 'withdraw' | 'invest' | 'profit' | 'referral';
   amount: number;
-  status: 'pending' | 'completed';
+  status: 'pending' | 'completed' | 'rejected';
   date: string;
   txHash?: string;
+  trackId?: string;
+  paymentUrl?: string;
+  payoutTrackId?: string;
+  payoutStatus?: string;
+  fee?: number;
+  netAmount?: number;
+  address?: string;
+  timestamp?: number;
 }

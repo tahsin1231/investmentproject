@@ -17,7 +17,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
   // Simulation of UNIX boot sequence
   useEffect(() => {
     const logs = [
-      "INIT: booting DODDOGE Mainframe...",
+      "INIT: booting DODOOGE Mainframe...",
       "SYSTEM: loading UNIX v11.8 kernel modules...",
       "NET: handshake with SiteChai Cloud nodes success",
       "SECURE: initializing AES-256 local vault matrix...",
@@ -50,7 +50,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               <span className="w-3 h-3 rounded-full bg-red-500/70 inline-block" />
               <span className="w-3 h-3 rounded-full bg-yellow-500/70 inline-block" />
               <span className="w-3 h-3 rounded-full bg-emerald-500/70 inline-block" />
-              <span className="text-emerald-500/60 font-bold ml-2">DODDOGE://MAINFRAME.SYS</span>
+              <span className="text-emerald-500/60 font-bold ml-2">DODOOGE://MAINFRAME.SYS</span>
             </div>
             <div className="text-emerald-500/40 text-[10px]">
               TTY: /dev/pts/0 (ONLINE)
@@ -61,13 +61,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           <div className="space-y-1.5 text-xs md:text-sm text-emerald-400 min-h-[140px] font-mono leading-relaxed">
             {bootLogs.map((log, idx) => (
               <div key={idx} className="flex items-start">
-                <span className="text-emerald-500/50 mr-2">root@doddoge:~#</span>
+                <span className="text-emerald-500/50 mr-2">root@dodooge:~#</span>
                 <span>{log}</span>
               </div>
             ))}
             {bootStep < 7 && (
               <div className="flex items-center">
-                <span className="text-emerald-500/50 mr-2">root@doddoge:~#</span>
+                <span className="text-emerald-500/50 mr-2">root@dodooge:~#</span>
                 <span className="w-2 h-4 bg-emerald-400 blink inline-block" />
               </div>
             )}
@@ -119,7 +119,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                     GLOBAL CRYPTO & CORPORATE ASSET STREAM
                   </h2>
                   <p className="text-emerald-500/60 text-xs mt-1 leading-relaxed uppercase">
-                    Live institutional-grade price indices and socket feedback channels. Simulated price feeds update automatically.
+                    Live institutional-grade price indices and socket feedback channels. Real-time pricing feeds update automatically.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

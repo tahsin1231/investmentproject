@@ -149,15 +149,18 @@ export const EarnView: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {plans.map((plan) => {
+            const isPlanActive = activePlans.some(p => p.planId === plan.id && p.status === 'active' && new Date(p.endDate) > new Date());
             const hasSufficient = (user?.balance || 0) >= plan.price;
 
             return (
               <div 
                 key={plan.id}
                 className={`bg-slate-950 border rounded-lg p-4 flex flex-col justify-between transition-all relative group ${
-                  hasSufficient 
-                    ? 'border-emerald-500/30 hover:border-emerald-400' 
-                    : 'border-emerald-500/10 opacity-75'
+                  isPlanActive
+                    ? 'border-emerald-500/10 opacity-60'
+                    : hasSufficient 
+                      ? 'border-emerald-500/30 hover:border-emerald-400' 
+                      : 'border-emerald-500/10 opacity-75'
                 }`}
               >
                 <div>
@@ -165,7 +168,11 @@ export const EarnView: React.FC = () => {
                     <div className="px-2 py-0.5 bg-slate-900 border border-emerald-500/20 rounded text-[9px] text-emerald-400 font-bold tracking-widest uppercase">
                       LEVEL_0{plan.id}
                     </div>
-                    <span className="text-[9px] text-emerald-500/60 font-bold uppercase">TERM: {plan.durationDays} DAYS</span>
+                    {isPlanActive ? (
+                      <span className="text-[9px] text-emerald-400 font-bold uppercase animate-pulse">RUNNING</span>
+                    ) : (
+                      <span className="text-[9px] text-emerald-500/60 font-bold uppercase">TERM: {plan.durationDays} DAYS</span>
+                    )}
                   </div>
 
                   <h4 className="font-bold text-white text-xs mb-3 uppercase tracking-wider">{plan.name}</h4>
@@ -186,17 +193,27 @@ export const EarnView: React.FC = () => {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handleSubscribe(plan.id)}
-                  className={`w-full font-bold py-2 px-3 rounded text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer uppercase tracking-wider ${
-                    hasSufficient
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/10'
-                      : 'bg-slate-900 border border-emerald-500/20 text-emerald-500/60 hover:text-emerald-400 hover:border-emerald-500/40'
-                  }`}
-                >
-                  <Play className="w-3 h-3 fill-current" />
-                  <span>{t.buyNowBtn}</span>
-                </button>
+                {isPlanActive ? (
+                  <button
+                    disabled
+                    className="w-full font-bold py-2 px-3 rounded text-xs flex items-center justify-center gap-1.5 transition-all border border-emerald-500/10 text-emerald-500/30 bg-slate-900/40 uppercase tracking-wider cursor-not-allowed"
+                  >
+                    <Shield className="w-3 h-3" />
+                    <span>ALREADY ACTIVE</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleSubscribe(plan.id)}
+                    className={`w-full font-bold py-2 px-3 rounded text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer uppercase tracking-wider ${
+                      hasSufficient
+                        ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/10'
+                        : 'bg-slate-900 border border-emerald-500/20 text-emerald-500/60 hover:text-emerald-400 hover:border-emerald-500/40'
+                    }`}
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    <span>{t.buyNowBtn}</span>
+                  </button>
+                )}
               </div>
             );
           })}

@@ -16,12 +16,12 @@ export const Footer: React.FC = () => {
           <div className="flex items-center space-x-2">
             <img 
               src="https://iili.io/C1qgH3x.jpg" 
-              alt="DODDOGE Logo" 
+              alt="DODOOGE Logo" 
               className="w-6 h-6 rounded-full border border-emerald-500/30 object-cover"
               referrerPolicy="no-referrer"
             />
             <span className="font-sans font-bold text-white tracking-widest text-xs uppercase">
-              DODDOGE<span className="text-emerald-500">_SYS</span>
+              DODOOGE<span className="text-emerald-500">_SYS</span>
             </span>
           </div>
 
@@ -36,7 +36,7 @@ export const Footer: React.FC = () => {
         {/* Legal disclaimer */}
         <div className="space-y-2 max-w-4xl text-[9px] uppercase leading-relaxed text-emerald-500/40">
           <p>
-            <strong className="text-emerald-500/60 font-bold">Risk Warning:</strong> Trading stock equities and digital cryptographic assets carries high systemic volatility and potential severe loss. Indicators and simulated portfolios on DODDOGE are for research presentation only. This terminal is not a registered broker or investment advisor.
+            <strong className="text-emerald-500/60 font-bold">Risk Warning:</strong> Trading stock equities and digital cryptographic assets carries high systemic volatility and potential severe loss. Indicators and simulated portfolios on DODOOGE are for research presentation only. This terminal is not a registered broker or investment advisor.
           </p>
           <p>
             Operating 100% locally on Client-Side Local Storage Vault. Fully compliant with static zero-overhead hosting systems such as sitechai.com without external SQL database requirements.
@@ -45,7 +45,7 @@ export const Footer: React.FC = () => {
 
         {/* Small copyright */}
         <div className="flex flex-col sm:flex-row justify-between items-center text-[10px] gap-2 pt-2 uppercase">
-          <span>&copy; {new Date().getFullYear()} DODDOGE Corp. UNIX Terminal TTY Node. All rights reserved.</span>
+          <span>&copy; {new Date().getFullYear()} DODOOGE Corp. UNIX Terminal TTY Node. All rights reserved.</span>
           <div className="flex items-center space-x-3 text-[9px]">
             <span className="flex items-center gap-1">
               <Shield className="w-3.5 h-3.5 text-emerald-500/40" />

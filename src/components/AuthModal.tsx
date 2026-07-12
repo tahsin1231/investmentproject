@@ -127,12 +127,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
           <div className="flex items-center space-x-2 mb-6">
             <img 
               src="https://iili.io/C1qgH3x.jpg" 
-              alt="DODDOGE Logo" 
+              alt="DODOOGE Logo" 
               className="w-8 h-8 rounded-full border border-amber-500/30 object-cover"
               referrerPolicy="no-referrer"
             />
             <span className="font-mono text-xs text-amber-500 font-bold uppercase tracking-widest">
-              DODDOGE TERMINAL
+              DODOOGE TERMINAL
             </span>
           </div>
 
