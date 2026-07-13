@@ -44,6 +44,7 @@ export const MarketsView: React.FC = () => {
   const [candles, setCandles] = useState<Candlestick[]>([]);
   const [currentPrice, setCurrentPrice] = useState<number>(basePrice);
   const [currentCandle, setCurrentCandle] = useState<Candlestick | null>(null);
+  const [zoomLevel, setZoomLevel] = useState<number>(16); // default showing 16 visible bars
 
   // Trade form states
   const [tradeAmount, setTradeAmount] = useState<string>('50');
@@ -109,7 +110,7 @@ export const MarketsView: React.FC = () => {
     let prevClose = basePrice - 180;
     const nowTime = Math.floor(Date.now() / 60000);
 
-    for (let i = 15; i > 0; i--) {
+    for (let i = 39; i > 0; i--) {
       const timeStr = new Date((nowTime - i) * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const open = prevClose;
       const change = (Math.random() - 0.48) * 120;
@@ -183,7 +184,7 @@ export const MarketsView: React.FC = () => {
       // 1. Add current completed candle to history
       setCandles(prev => {
         const updated = [...prev, currentCandle];
-        if (updated.length > 20) {
+        if (updated.length > 50) {
           updated.shift(); // keep it clean
         }
         return updated;
@@ -230,7 +231,6 @@ export const MarketsView: React.FC = () => {
   // Render SVG Candlestick Chart
   const chartHeight = 260;
   const chartWidth = 500;
-  const candleWidth = 16;
   const paddingRight = 60;
   const actualChartWidth = chartWidth - paddingRight;
 
@@ -242,12 +242,17 @@ export const MarketsView: React.FC = () => {
     return list;
   }, [candles, currentCandle]);
 
-  // Compute min and max for scaling
+  // Sliced candle data based on zoomLevel (number of visible candles)
+  const displayedCandleData = useMemo(() => {
+    return candleData.slice(-zoomLevel);
+  }, [candleData, zoomLevel]);
+
+  // Compute min and max for scaling using only displayed candles
   const priceRange = useMemo(() => {
-    if (candleData.length === 0) return { min: 0, max: 100 };
+    if (displayedCandleData.length === 0) return { min: 0, max: 100 };
     let max = -Infinity;
     let min = Infinity;
-    candleData.forEach(c => {
+    displayedCandleData.forEach(c => {
       if (c.high > max) max = c.high;
       if (c.low < min) min = c.low;
     });
@@ -257,7 +262,7 @@ export const MarketsView: React.FC = () => {
       min: min - padding,
       max: max + padding
     };
-  }, [candleData]);
+  }, [displayedCandleData]);
 
   // Scale functions
   const scaleY = (price: number) => {
@@ -267,10 +272,17 @@ export const MarketsView: React.FC = () => {
   };
 
   const getX = (index: number) => {
-    const count = candleData.length;
+    const count = displayedCandleData.length;
     if (count <= 1) return actualChartWidth / 2;
     return (index / (count - 1)) * (actualChartWidth - 40) + 20;
   };
+
+  // Dynamically calculate candle width based on zoom level to ensure visual perfection
+  const candleWidth = useMemo(() => {
+    const count = displayedCandleData.length;
+    const calculated = (actualChartWidth / count) * 0.55;
+    return Math.max(5, Math.min(32, calculated));
+  }, [displayedCandleData, actualChartWidth]);
 
   // Preset Amount Buttons
   const setAmountPreset = (multiplier: number) => {
@@ -406,6 +418,55 @@ export const MarketsView: React.FC = () => {
             </div>
           </div>
 
+          {/* Candle Chart Zoom Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 border border-slate-900 rounded-xl p-3">
+            <div className="flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] font-mono text-slate-300 uppercase tracking-wider font-bold">
+                🔍 Candle Zoom: {zoomLevel} Bars shown
+              </span>
+            </div>
+            <div className="flex items-center space-x-2.5 w-full sm:w-auto justify-between sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setZoomLevel(prev => Math.max(6, prev - 2))}
+                disabled={zoomLevel <= 6}
+                className="w-8 h-8 rounded-lg bg-slate-950 hover:bg-slate-800 disabled:opacity-35 border border-slate-800 hover:border-slate-700 text-slate-200 font-extrabold flex items-center justify-center text-sm transition-all cursor-pointer select-none active:scale-95"
+                title="Zoom In (Fewer candles, bigger size)"
+              >
+                ＋
+              </button>
+              
+              <input
+                type="range"
+                min="6"
+                max="40"
+                step="2"
+                value={zoomLevel}
+                onChange={(e) => setZoomLevel(Number(e.target.value))}
+                className="flex-1 sm:w-28 accent-emerald-500 h-1.5 bg-slate-950 rounded-lg cursor-pointer appearance-none"
+              />
+
+              <button
+                type="button"
+                onClick={() => setZoomLevel(prev => Math.min(40, prev + 2))}
+                disabled={zoomLevel >= 40}
+                className="w-8 h-8 rounded-lg bg-slate-950 hover:bg-slate-800 disabled:opacity-35 border border-slate-800 hover:border-slate-700 text-slate-200 font-extrabold flex items-center justify-center text-sm transition-all cursor-pointer select-none active:scale-95"
+                title="Zoom Out (More candles, smaller size)"
+              >
+                －
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setZoomLevel(16)}
+                className="px-2.5 h-8 rounded-lg bg-slate-950 hover:bg-slate-800 hover:text-white border border-slate-800 text-[9px] font-mono font-bold text-slate-400 flex items-center justify-center uppercase transition-all cursor-pointer select-none active:scale-95"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+
           {/* Canvas-style Candlestick SVG element */}
           <div className="w-full relative bg-slate-950/80 border border-slate-900 rounded-xl p-2 h-[280px] overflow-hidden">
             {/* Grid line overlays for TradingView aesthetic */}
@@ -441,7 +502,7 @@ export const MarketsView: React.FC = () => {
               </text>
 
               {/* Draw candlesticks */}
-              {candleData.map((candle, idx) => {
+              {displayedCandleData.map((candle, idx) => {
                 const x = getX(idx);
                 const isGreen = candle.close >= candle.open;
                 const color = isGreen ? "#10b981" : "#ef4444";
@@ -706,6 +767,23 @@ export const MarketsView: React.FC = () => {
               </button>
             </div>
 
+            {/* Active Telemetry Sync Panel showing the matching minute and round */}
+            <div className="bg-slate-950 px-3.5 py-2.5 border border-slate-800/85 rounded-xl text-center space-y-1">
+              <div className="text-[9px] text-slate-500 uppercase tracking-widest font-extrabold flex items-center justify-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>ACTIVE TELEMETRY SYNC (EVERY 1 MIN)</span>
+              </div>
+              <div className="flex justify-center items-center space-x-3 text-xs">
+                <div className="text-white font-bold font-mono">
+                  ROUND ID: <span className="text-amber-500">#{currentRoundId}</span>
+                </div>
+                <div className="text-slate-700">|</div>
+                <div className="text-white font-bold font-mono">
+                  CANDLE TIME: <span className="text-emerald-400">{currentCandle?.time || 'Syncing'}</span>
+                </div>
+              </div>
+            </div>
+
             {aiLoading ? (
               <div className="py-12 flex flex-col items-center justify-center space-y-3">
                 <div className="w-8 h-8 rounded-full border-2 border-t-amber-500 border-slate-800 animate-spin" />
@@ -747,7 +825,7 @@ export const MarketsView: React.FC = () => {
                 </div>
 
                 <div className="text-[8px] text-slate-500 leading-normal uppercase">
-                  💡 *This analysis is dynamically processed for your specific user block and resets every 60 seconds.
+                  💡 *This analysis is dynamically processed for your specific user block, updates every single minute to match the current candle, and aligns with active round #{currentRoundId}.
                 </div>
 
                 <button
