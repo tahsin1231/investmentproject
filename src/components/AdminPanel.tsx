@@ -39,7 +39,10 @@ import {
   Terminal,
   Cpu,
   UserCheck,
-  CheckSquare
+  CheckSquare,
+  History,
+  Download,
+  FileText
 } from 'lucide-react';
 
 interface PromoCode {
@@ -71,7 +74,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [selectedUserPlans, setSelectedUserPlans] = useState<ActivePlan[]>([]);
   const [selectedUserTxs, setSelectedUserTxs] = useState<Transaction[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'users' | 'mining' | 'promos' | 'system' | 'plans' | 'withdrawals'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'mining' | 'promos' | 'system' | 'plans' | 'withdrawals' | 'history'>('users');
 
   // Dynamic plans states
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -122,6 +125,12 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [withdrawalsEnabled, setWithdrawalsEnabled] = useState(true);
   const [totalPlatformBalance, setTotalPlatformBalance] = useState(0);
   const [loadingPlatformBalance, setLoadingPlatformBalance] = useState(false);
+
+  // Master Transaction History state
+  const [allHistoryTxs, setAllHistoryTxs] = useState<(Transaction & { userId: string; userEmail: string })[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyFilterType, setHistoryFilterType] = useState<'all' | 'deposit' | 'withdraw'>('all');
 
   // Session audit trail
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -355,6 +364,111 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     } finally {
       setLoadingWithdrawals(false);
     }
+  };
+
+  const fetchAllTransactionsHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      let currentUsers = users;
+      if (currentUsers.length === 0) {
+        const usersRef = collection(db, 'users');
+        const snap = await getDocs(usersRef);
+        currentUsers = snap.docs.map(d => d.data() as User);
+      }
+
+      const historyList: (Transaction & { userId: string; userEmail: string })[] = [];
+
+      await Promise.all(currentUsers.map(async (u) => {
+        try {
+          const txsRef = collection(db, 'users', u.id, 'transactions');
+          const txsSnap = await getDocs(txsRef);
+          txsSnap.docs.forEach(docSnap => {
+            const tx = docSnap.data() as Transaction;
+            if (tx.type === 'deposit' || tx.type === 'withdraw') {
+              historyList.push({
+                ...tx,
+                userId: u.id,
+                userEmail: u.email || ('User ID: ' + u.id.slice(0, 8))
+              });
+            }
+          });
+        } catch (txErr) {
+          console.error(`Error loading transactions for user ${u.id}:`, txErr);
+        }
+      }));
+
+      // Sort by date or timestamp descending (newest first)
+      historyList.sort((a, b) => {
+        const timeA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
+        const timeB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
+        return timeB - timeA;
+      });
+
+      setAllHistoryTxs(historyList);
+    } catch (err) {
+      console.error('Error fetching transactions history:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleDownloadTXT = () => {
+    if (allHistoryTxs.length === 0) {
+      alert("No transaction records available to export.");
+      return;
+    }
+
+    const filtered = allHistoryTxs.filter(tx => {
+      const matchQuery = 
+        tx.userEmail.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+        tx.id.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+        (tx.address || tx.txHash || '').toLowerCase().includes(historySearchQuery.toLowerCase());
+      
+      const matchType = 
+        historyFilterType === 'all' || 
+        tx.type === historyFilterType;
+
+      return matchQuery && matchType;
+    });
+
+    let content = `============================================================\n`;
+    content += `         PLATFORM TRANSACTION LEDGER EXPORT LOGS\n`;
+    content += `============================================================\n`;
+    content += `Generated On: ${new Date().toLocaleString()}\n`;
+    content += `Total Records Exported: ${filtered.length}\n`;
+    content += `Filters: [Type: ${historyFilterType.toUpperCase()}] [Search: "${historySearchQuery}"]\n`;
+    content += `============================================================\n\n`;
+
+    filtered.forEach((tx, idx) => {
+      content += `${idx + 1}. TRANSACTION RECORD\n`;
+      content += `   --------------------------------------------------------\n`;
+      content += `   Tx ID:       ${tx.id}\n`;
+      content += `   User Email:  ${tx.userEmail}\n`;
+      content += `   User ID:     ${tx.userId}\n`;
+      content += `   Type:        ${tx.type.toUpperCase()}\n`;
+      content += `   Amount:      $${tx.amount.toFixed(2)} USDT\n`;
+      if (tx.type === 'withdraw') {
+        content += `   Fee:         $${(tx.fee ?? 0.25).toFixed(2)} USDT\n`;
+        content += `   Net Amount:  $${(tx.netAmount ?? (tx.amount - 0.25)).toFixed(2)} USDT\n`;
+        content += `   Address:     ${tx.address || tx.txHash || 'N/A'}\n`;
+      } else {
+        content += `   Track ID:    ${tx.trackId || 'N/A'}\n`;
+        content += `   Payment URL: ${tx.paymentUrl || 'N/A'}\n`;
+      }
+      content += `   Status:      ${tx.status.toUpperCase()}\n`;
+      content += `   Date & Time: ${tx.date}\n`;
+      content += `============================================================\n\n`;
+    });
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ledger_tx_history_${Date.now()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleApproveWithdrawal = async (tx: any, userId: string) => {
@@ -1092,6 +1206,18 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             >
               <Lock className="w-4 h-4" />
               <span>Withdrawals Queue</span>
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('history'); fetchAllTransactionsHistory(); }}
+              className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2.5 ${
+                activeTab === 'history'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/10'
+                  : 'text-emerald-500/70 hover:bg-slate-900 hover:text-emerald-400'
+              }`}
+            >
+              <History className="w-4 h-4" />
+              <span>Tx History Logs</span>
             </button>
           </div>
 
@@ -2419,6 +2545,169 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                           </td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: CENTRAL TRANSACTION HISTORY LEDGER */}
+          {activeTab === 'history' && (
+            <div className="border border-emerald-500/20 bg-slate-950/80 rounded-xl p-5 space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/10 pb-4">
+                <div>
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <History className="w-4 h-4 text-emerald-400" />
+                    <span>Global Transaction History Ledger</span>
+                  </h2>
+                  <p className="text-[10px] text-emerald-500/40 uppercase mt-0.5">
+                    Central archive of all client deposits and withdrawals with addresses
+                  </p>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleDownloadTXT}
+                    className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow shadow-emerald-500/20"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download TXT Ledger</span>
+                  </button>
+
+                  <button
+                    onClick={fetchAllTransactionsHistory}
+                    className="p-1.5 bg-slate-900 hover:bg-slate-850 rounded border border-emerald-500/15 text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1.5 text-[10px] uppercase font-bold cursor-pointer"
+                    title="Refresh Ledger Logs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? 'animate-spin' : ''}`} />
+                    <span>Refresh Ledger</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filtering & Search Bar */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 bg-slate-950/50 p-3 border border-emerald-500/5 rounded-xl">
+                <div className="md:col-span-8 relative">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-emerald-500/40" />
+                  <input
+                    type="text"
+                    placeholder="Search by Email, Transaction ID or Destination Wallet Address..."
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    className="w-full bg-slate-900/60 border border-emerald-500/10 focus:border-emerald-500/40 rounded-lg py-2 pl-9 pr-4 text-[11px] text-white focus:outline-none uppercase font-mono placeholder-emerald-500/25"
+                  />
+                </div>
+
+                <div className="md:col-span-4 flex gap-2">
+                  <select
+                    value={historyFilterType}
+                    onChange={(e: any) => setHistoryFilterType(e.target.value)}
+                    className="w-full bg-slate-900/60 border border-emerald-500/10 focus:border-emerald-500/40 rounded-lg py-2 px-3 text-[11px] text-emerald-400 font-mono focus:outline-none uppercase cursor-pointer"
+                  >
+                    <option value="all">ALL TRANSACTION TYPES</option>
+                    <option value="deposit">DEPOSITS ONLY</option>
+                    <option value="withdraw">WITHDRAWALS ONLY</option>
+                  </select>
+                </div>
+              </div>
+
+              {loadingHistory ? (
+                <div className="text-center py-16 text-slate-500 text-xs uppercase animate-pulse flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-emerald-500" />
+                  <span>Scanning blockchain and database journals...</span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[10px] border-collapse uppercase font-mono">
+                    <thead>
+                      <tr className="text-emerald-500/50 border-b border-emerald-500/20 pb-2 text-[9px] tracking-wider">
+                        <th className="py-2">User Email</th>
+                        <th className="py-2">Tx ID</th>
+                        <th className="py-2">Type</th>
+                        <th className="py-2">Amount</th>
+                        <th className="py-2">Address/Info</th>
+                        <th className="py-2">Status</th>
+                        <th className="py-2">Date Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allHistoryTxs
+                        .filter(tx => {
+                          const matchQuery = 
+                            tx.userEmail.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+                            tx.id.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+                            (tx.address || tx.txHash || '').toLowerCase().includes(historySearchQuery.toLowerCase());
+                          
+                          const matchType = 
+                            historyFilterType === 'all' || 
+                            tx.type === historyFilterType;
+
+                          return matchQuery && matchType;
+                        })
+                        .map((tx) => (
+                          <tr key={tx.id} className="border-b border-emerald-500/5 hover:bg-slate-900/20 text-emerald-400/80">
+                            <td className="py-3 font-bold text-white max-w-[150px] truncate" title={tx.userEmail}>
+                              {tx.userEmail}
+                            </td>
+                            <td className="py-3 text-slate-400">
+                              0x{tx.id.slice(0, 8)}
+                            </td>
+                            <td className="py-3">
+                              {tx.type === 'deposit' ? (
+                                <span className="text-emerald-400 font-bold bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10">
+                                  DEPOSIT
+                                </span>
+                              ) : (
+                                <span className="text-amber-400 font-bold bg-amber-500/5 px-2 py-0.5 rounded border border-amber-500/10">
+                                  WITHDRAW
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 font-bold">
+                              ${tx.amount.toFixed(2)}
+                            </td>
+                            <td className="py-3 text-slate-300 max-w-[200px] truncate" title={tx.address || tx.txHash || tx.trackId}>
+                              {tx.type === 'withdraw' 
+                                ? (tx.address || tx.txHash || 'NO ADDRESS SPECIFIED') 
+                                : `TRACK ID: ${tx.trackId || 'N/A'}`}
+                            </td>
+                            <td className="py-3">
+                              {tx.status === 'completed' ? (
+                                <span className="px-2 py-0.5 rounded text-[8px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                                  COMPLETED
+                                </span>
+                              ) : tx.status === 'rejected' ? (
+                                <span className="px-2 py-0.5 rounded text-[8px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
+                                  REJECTED
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[8px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 animate-pulse">
+                                  PENDING
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 text-emerald-500/40 text-[9px]">{tx.date}</td>
+                          </tr>
+                        ))}
+                      {allHistoryTxs.filter(tx => {
+                        const matchQuery = 
+                          tx.userEmail.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+                          tx.id.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+                          (tx.address || tx.txHash || '').toLowerCase().includes(historySearchQuery.toLowerCase());
+                        
+                        const matchType = 
+                          historyFilterType === 'all' || 
+                          tx.type === historyFilterType;
+
+                        return matchQuery && matchType;
+                      }).length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="text-center py-12 text-slate-500 uppercase tracking-wider">
+                            No transaction ledger logs found matching criteria.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>

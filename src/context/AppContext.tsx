@@ -170,11 +170,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         // Sync limits
-        setMinWithdrawal(typeof data.minWithdrawal === 'number' ? data.minWithdrawal : 5.00);
-        setMaxWithdrawal(typeof data.maxWithdrawal === 'number' ? data.maxWithdrawal : 1000.00);
-        setMonthlyWithdrawalLimit(typeof data.monthlyWithdrawalLimit === 'number' ? data.monthlyWithdrawalLimit : 5000.00);
-        setDailyWithdrawalLimit(typeof data.dailyWithdrawalLimit === 'number' ? data.dailyWithdrawalLimit : 1000.00);
-        setReferralCommissionRate(typeof data.referralCommissionRate === 'number' ? data.referralCommissionRate : 20);
+        const parseLimitValue = (val: any, fallback: number): number => {
+          if (typeof val === 'number') return val;
+          if (typeof val === 'string') {
+            const num = parseFloat(val);
+            return isNaN(num) ? fallback : num;
+          }
+          return fallback;
+        };
+
+        setMinWithdrawal(parseLimitValue(data.minWithdrawal, 5.00));
+        setMaxWithdrawal(parseLimitValue(data.maxWithdrawal, 1000.00));
+        setMonthlyWithdrawalLimit(parseLimitValue(data.monthlyWithdrawalLimit, 5000.00));
+        setDailyWithdrawalLimit(parseLimitValue(data.dailyWithdrawalLimit, 1000.00));
+        setReferralCommissionRate(parseLimitValue(data.referralCommissionRate, 20));
         setWithdrawalsEnabled(data.withdrawalsEnabled !== false);
       } else {
         // Create settings doc if it does not exist
