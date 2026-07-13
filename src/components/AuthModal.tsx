@@ -326,6 +326,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                     onChange={(e) => setRefCode(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 px-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors font-mono"
                   />
+                  <div className="mt-1.5 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 text-[10px] text-amber-400 leading-normal font-sans">
+                    💡 <b>Exclusive Bonus:</b> Users who register with a referral code will receive a <b>50% refund on lost OTC trades</b>! Direct accounts get a 0% refund.
+                  </div>
                 </div>
               </>
             )}

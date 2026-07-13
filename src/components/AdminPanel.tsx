@@ -150,6 +150,8 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
 
   // Global referral commission rate state
   const [referralCommissionRateInput, setReferralCommissionRateInput] = useState('20');
+  const [referralCommFirstDepositInput, setReferralCommFirstDepositInput] = useState('20');
+  const [referralCommSubsequentDepositInput, setReferralCommSubsequentDepositInput] = useState('5');
 
   // Monitor Auth Status on load
   useEffect(() => {
@@ -391,6 +393,8 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         setMonthlyWithdrawalLimitInput(String(data.monthlyWithdrawalLimit ?? '5000.00'));
         setDailyWithdrawalLimitInput(String(data.dailyWithdrawalLimit ?? '1000.00'));
         setReferralCommissionRateInput(String(data.referralCommissionRate ?? '20'));
+        setReferralCommFirstDepositInput(String(data.referralCommFirstDeposit ?? '20'));
+        setReferralCommSubsequentDepositInput(String(data.referralCommSubsequentDeposit ?? '5'));
         setWithdrawalsEnabled(data.withdrawalsEnabled !== false);
       }
     } catch (err) {
@@ -994,6 +998,61 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
     }
   };
 
+  const handleReferralRewardOnDeposit = async (depositorId: string, depositorEmail: string, referredByCode: string, depositAmount: number, currentTxId: string) => {
+    try {
+      if (!referredByCode) return;
+
+      // Find referrer
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('referralCode', '==', referredByCode));
+      const querySnap = await getDocs(q);
+
+      if (!querySnap.empty) {
+        const referrerDoc = querySnap.docs[0];
+        const referrerData = referrerDoc.data() as User;
+
+        // Determine if this is the first deposit
+        const txsRef = collection(db, 'users', depositorId, 'transactions');
+        const txsSnap = await getDocs(txsRef);
+        const completedDeposits = txsSnap.docs
+          .map(d => d.data() as Transaction)
+          .filter(t => t.type === 'deposit' && t.status === 'completed' && t.id !== currentTxId);
+
+        const isFirstDeposit = completedDeposits.length === 0;
+        const rate = isFirstDeposit ? parseFloat(referralCommFirstDepositInput) || 20 : parseFloat(referralCommSubsequentDepositInput) || 5;
+        const commission = Number((depositAmount * (rate / 100)).toFixed(2));
+
+        if (commission <= 0) return;
+
+        const newRefBalance = Number((referrerData.balance + commission).toFixed(2));
+        const newRefProfit = Number((referrerData.totalProfit + commission).toFixed(2));
+
+        // Update referrer doc
+        await updateDoc(referrerDoc.ref, {
+          balance: newRefBalance,
+          totalProfit: newRefProfit
+        });
+
+        // Register transaction for referrer
+        const refTx: Transaction = {
+          id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
+          type: 'referral',
+          amount: commission,
+          status: 'completed',
+          date: new Date().toLocaleString(),
+          txHash: `Commission (${rate}%) from user deposit (${depositorEmail})`
+        };
+        await setDoc(doc(db, 'users', referrerDoc.id, 'transactions', refTx.id), refTx);
+
+        // Update local users state
+        setUsers(prev => prev.map(u => u.id === referrerDoc.id ? { ...u, balance: newRefBalance, totalProfit: newRefProfit } : u));
+        console.log(`Referral reward processed: ${rate}% ($${commission} USDT) credited to referrer ${referrerData.email}`);
+      }
+    } catch (err) {
+      console.error('Error handling referral reward on deposit:', err);
+    }
+  };
+
   // Approve / Complete Pending User Transaction
   const handleUpdateTxStatus = async (tx: Transaction, nextStatus: 'completed' | 'pending') => {
     if (!selectedUser) return;
@@ -1003,6 +1062,24 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
 
       setSelectedUserTxs(prev => prev.map(t => t.id === tx.id ? { ...t, status: nextStatus } : t));
       addAuditLog(`Updated Tx ${tx.id} status to ${nextStatus.toUpperCase()}`, selectedUser.email);
+
+      // If it is a deposit and approved, credit the user's balance and process referral
+      if (tx.type === 'deposit' && nextStatus === 'completed') {
+        const newBalance = Number((selectedUser.balance + tx.amount).toFixed(2));
+        await updateDoc(doc(db, 'users', selectedUser.id), { balance: newBalance });
+
+        // Update local states
+        setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, balance: newBalance } : u));
+        setSelectedUser(prev => prev ? { ...prev, balance: newBalance } : null);
+
+        // Process referral commission
+        if (selectedUser.referredBy) {
+          await handleReferralRewardOnDeposit(selectedUser.id, selectedUser.email, selectedUser.referredBy, tx.amount, tx.id);
+        }
+        
+        // Recalculate platform balance
+        fetchPlatformBalance();
+      }
     } catch (err) {
       alert('Failed to update status: ' + err);
     }
@@ -1071,6 +1148,8 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         monthlyWithdrawalLimit: parseFloat(monthlyWithdrawalLimitInput) || 5000.00,
         dailyWithdrawalLimit: parseFloat(dailyWithdrawalLimitInput) || 1000.00,
         referralCommissionRate: parseFloat(referralCommissionRateInput) || 20,
+        referralCommFirstDeposit: parseFloat(referralCommFirstDepositInput) || 20,
+        referralCommSubsequentDeposit: parseFloat(referralCommSubsequentDepositInput) || 5,
         withdrawalsEnabled: withdrawalsEnabled
       }, { merge: true });
 
@@ -2346,7 +2425,7 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
                       <span className="text-[10px] font-bold uppercase tracking-wider">Affiliate Commission System Config</span>
                     </div>
                     <div>
-                      <label className="block text-[8px] text-slate-500 uppercase mb-1">Global Referral Commission Rate (%)</label>
+                      <label className="block text-[8px] text-slate-500 uppercase mb-1">Plan Purchase Referral Commission (%)</label>
                       <input
                         type="number"
                         step="0.1"
@@ -2356,8 +2435,32 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
                         className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none font-mono"
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[8px] text-slate-500 uppercase mb-1">First Deposit Referral (%)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="e.g. 20"
+                          value={referralCommFirstDepositInput}
+                          onChange={(e) => setReferralCommFirstDepositInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] text-slate-500 uppercase mb-1">Subsequent Deposits Referral (%)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="e.g. 5"
+                          value={referralCommSubsequentDepositInput}
+                          onChange={(e) => setReferralCommSubsequentDepositInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none font-mono"
+                        />
+                      </div>
+                    </div>
                     <p className="text-[8px] text-slate-500 uppercase leading-normal">
-                      Adjusts the affiliate reward rate paid to referrers when their sub-nodes buy active investment packages. Standard default value is 20%.
+                      Adjusts the affiliate reward rate paid to referrers when their sub-nodes buy active investment packages or execute payments/deposits on their accounts.
                     </p>
                   </div>
                 </div>

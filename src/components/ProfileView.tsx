@@ -129,6 +129,9 @@ export const ProfileView: React.FC = () => {
           <p className="text-emerald-500/80 text-xs mt-1.5 leading-relaxed uppercase">
             {t.referralDesc}
           </p>
+          <div className="mt-2 text-[10px] text-amber-400 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 leading-relaxed uppercase font-sans">
+            🎁 <b>Sub-node Benefit:</b> Your referrals receive a <b>50% refund on lost OTC trades</b> when they register using your referral link! Direct signups get 0% refund.
+          </div>
         </div>
 
         {/* Copy Referral Link Panel */}

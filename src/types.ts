@@ -52,7 +52,7 @@ export interface StockData {
 
 export interface Transaction {
   id: string;
-  type: 'deposit' | 'withdraw' | 'invest' | 'profit' | 'referral';
+  type: 'deposit' | 'withdraw' | 'invest' | 'profit' | 'referral' | 'trade' | 'trade_win' | 'trade_refund';
   amount: number;
   status: 'pending' | 'completed' | 'rejected';
   date: string;
