@@ -12,7 +12,8 @@ import {
   query,
   where,
   deleteDoc,
-  collectionGroup
+  collectionGroup,
+  increment
 } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { 
@@ -338,39 +339,53 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
     }
   };
 
-  // Calculate live platform balance: sum of all user balances
+  // Calculate live platform balance: retrieve persistent balance in hand
   const fetchPlatformBalance = async () => {
     setLoadingPlatformBalance(true);
     try {
-      let currentUsers = users;
-      if (currentUsers.length === 0) {
-        const usersRef = collection(db, 'users');
-        const snap = await getDocs(usersRef);
-        currentUsers = snap.docs.map(d => d.data() as User);
-        setUsers(currentUsers);
+      const settingsRef = doc(db, 'settings', 'global');
+      const settingsSnap = await getDoc(settingsRef);
+      
+      let balanceInHand = 0;
+      let hasBalanceInHandField = false;
+
+      if (settingsSnap.exists()) {
+        const data = settingsSnap.data();
+        if (typeof data.totalPlatformBalance === 'number') {
+          balanceInHand = data.totalPlatformBalance;
+          hasBalanceInHandField = true;
+        }
       }
 
-      let totalBalancesSum = 0;
-      currentUsers.forEach(u => {
-        totalBalancesSum += typeof u.balance === 'number' ? u.balance : parseFloat(u.balance || '0') || 0;
-      });
+      if (!hasBalanceInHandField) {
+        let currentUsers = users;
+        if (currentUsers.length === 0) {
+          const usersRef = collection(db, 'users');
+          const snap = await getDocs(usersRef);
+          currentUsers = snap.docs.map(d => d.data() as User);
+          setUsers(currentUsers);
+        }
 
-      setTotalPlatformBalance(Number(totalBalancesSum.toFixed(2)));
+        let totalSum = 0;
+        currentUsers.forEach(u => {
+          const bal = typeof u.balance === 'number' ? u.balance : parseFloat(u.balance || '0') || 0;
+          const active = typeof u.activeInvestments === 'number' ? u.activeInvestments : parseFloat(u.activeInvestments || '0') || 0;
+          totalSum += bal + active;
+        });
+
+        balanceInHand = Number(totalSum.toFixed(2));
+        
+        // Save to global settings safely
+        await setDoc(settingsRef, { totalPlatformBalance: balanceInHand }, { merge: true });
+      }
+
+      setTotalPlatformBalance(Number(balanceInHand.toFixed(2)));
     } catch (err) {
       console.error('Error fetching platform balance:', err);
     } finally {
       setLoadingPlatformBalance(false);
     }
   };
-
-  // Keep total platform balance synchronized with local users state changes
-  useEffect(() => {
-    let totalBalancesSum = 0;
-    users.forEach(u => {
-      totalBalancesSum += typeof u.balance === 'number' ? u.balance : parseFloat(u.balance || '0') || 0;
-    });
-    setTotalPlatformBalance(Number(totalBalancesSum.toFixed(2)));
-  }, [users]);
 
   // Fetch system global configs
   const fetchGlobalSettings = async () => {
@@ -617,6 +632,15 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
           payoutStatus: String(payoutStatus)
         });
 
+        // Decrement total platform balance in settings/global
+        try {
+          await updateDoc(doc(db, 'settings', 'global'), {
+            totalPlatformBalance: increment(-tx.amount)
+          });
+        } catch (settingsErr) {
+          console.error('Failed to update global totalPlatformBalance:', settingsErr);
+        }
+
         addAuditLog(`Approved Withdrawal ${tx.id} - Payout successful. Track ID: ${trackId}`, userId);
         alert(`Withdrawal approved and OxaPay Payout processed successfully!\nTrack ID: ${trackId}`);
       } else {
@@ -781,11 +805,15 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
     if (!selectedUser) return;
     setIsSavingUserFields(true);
     try {
+      const oldBalance = selectedUser.balance || 0;
+      const newBalance = parseFloat(editUserBalance) || 0;
+      const balanceDiff = newBalance - oldBalance;
+
       const userRef = doc(db, 'users', selectedUser.id);
       const updatedFields = {
         email: editUserEmail.trim(),
         password: editUserPassword.trim(),
-        balance: parseFloat(editUserBalance) || 0,
+        balance: newBalance,
         firstName: editUserFirstName.trim(),
         lastName: editUserLastName.trim(),
         username: editUserUsername.trim(),
@@ -795,12 +823,23 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
 
       await updateDoc(userRef, updatedFields);
       
+      if (balanceDiff !== 0) {
+        try {
+          await updateDoc(doc(db, 'settings', 'global'), {
+            totalPlatformBalance: increment(balanceDiff)
+          });
+        } catch (settingsErr) {
+          console.error('Failed to update global totalPlatformBalance:', settingsErr);
+        }
+      }
+      
       const updatedUser = { ...selectedUser, ...updatedFields };
       setSelectedUser(updatedUser);
       setUsers(prev => prev.map(u => u.id === selectedUser.id ? updatedUser : u));
 
       addAuditLog(`Updated Profile Information`, selectedUser.email);
       alert('User details saved and synchronized successfully!');
+      fetchPlatformBalance();
     } catch (err: any) {
       alert('Failed to save user fields: ' + err.message);
     } finally {
@@ -884,6 +923,15 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
     try {
       const userRef = doc(db, 'users', selectedUser.id);
       await updateDoc(userRef, { balance: newBalance });
+
+      // Also update total platform balance in settings/global
+      try {
+        await updateDoc(doc(db, 'settings', 'global'), {
+          totalPlatformBalance: increment(change)
+        });
+      } catch (settingsErr) {
+        console.error('Failed to update global totalPlatformBalance:', settingsErr);
+      }
 
       // Add a ledger transaction
       const newTx: Transaction = {

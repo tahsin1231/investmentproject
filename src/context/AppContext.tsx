@@ -20,7 +20,8 @@ import {
   getDocs, 
   query, 
   where,
-  onSnapshot
+  onSnapshot,
+  increment
 } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from '../lib/firebase';
 
@@ -893,6 +894,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // 2. Update the user balance in Firestore
         const newBalance = Number((user.balance + depositAmount).toFixed(2));
         await updateDoc(doc(db, 'users', user.id), { balance: newBalance });
+
+        // Also update total platform balance in settings/global
+        try {
+          await updateDoc(doc(db, 'settings', 'global'), {
+            totalPlatformBalance: increment(depositAmount)
+          });
+        } catch (settingsErr) {
+          console.error('Failed to update global totalPlatformBalance:', settingsErr);
+        }
 
         // 3. Update local state
         setTransactions(prev => prev.map(t => t.id === pendingTx.id ? { ...t, status: 'completed' as const } : t));
