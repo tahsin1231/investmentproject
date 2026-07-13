@@ -39,19 +39,19 @@ function MainApp() {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [terminalLogs]);
 
-  // Listen to /admin or /tahsin route or admin command
+  // Listen to /admin or /akash route or admin command
   useEffect(() => {
     const handleLocationCheck = () => {
       const path = window.location.pathname;
       const hash = window.location.hash;
       const search = window.location.search;
       if (
-        path === '/tahsin' || 
-        path.endsWith('/tahsin') || 
-        hash === '#/tahsin' || 
-        hash === '#tahsin' ||
-        search.includes('tahsin=true') ||
-        search.includes('view=tahsin')
+        path === '/akash' || 
+        path.endsWith('/akash') || 
+        hash === '#/akash' || 
+        hash === '#akash' ||
+        search.includes('akash=true') ||
+        search.includes('view=akash')
       ) {
         setIsAdminStealth(true);
         setAdminOpen(true);

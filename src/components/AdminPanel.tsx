@@ -1118,10 +1118,10 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
               <ShieldAlert className="w-8 h-8" />
             </div>
             <h1 className="text-lg font-bold uppercase tracking-widest text-white">
-              {isStealth ? 'Stealth Access Mainframe' : 'Mainframe Access Required'}
+              Mainframe Access Required
             </h1>
             <p className="text-[10px] text-emerald-500/50 uppercase mt-1">
-              {isStealth ? 'TAHSIN_SECURE_TUNNEL TTY/1' : 'DODOOGE_CLI Security protocol v3.8'}
+              DODOOGE_CLI Security protocol v3.8
             </p>
           </div>
 
@@ -1136,7 +1136,7 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
             <form onSubmit={handleStealthLogin} className="space-y-4">
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-widest text-emerald-500/60 mb-1.5">
-                  Stealth Access Key (Password)
+                  Access Password Key
                 </label>
                 <input
                   type="password"
@@ -1157,12 +1157,12 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
                 {authLoading ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>DECRYPTING TUNNEL...</span>
+                    <span>DECRYPTING CREDENTIALS...</span>
                   </>
                 ) : (
                   <>
                     <Unlock className="w-3.5 h-3.5" />
-                    <span>AUTHORIZE STEALTH</span>
+                    <span>AUTHORIZE ACCESS</span>
                   </>
                 )}
               </button>
@@ -1222,21 +1222,6 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
           <div className="mt-6 pt-4 border-t border-emerald-500/10 flex items-center justify-between text-[9px] text-emerald-500/35 uppercase">
             <span>PORT_3000_INGRESS</span>
             <div className="flex gap-4">
-              {isStealth ? (
-                <button 
-                  onClick={() => { setIsStealth(false); setAuthError(null); }}
-                  className="text-amber-500 hover:text-amber-400 font-bold transition-colors cursor-pointer uppercase font-mono"
-                >
-                  Admin Login
-                </button>
-              ) : (
-                <button 
-                  onClick={() => { setIsStealth(true); setAuthError(null); }}
-                  className="text-blue-500 hover:text-blue-400 font-bold transition-colors cursor-pointer uppercase font-mono"
-                >
-                  Tahsin Tunnel
-                </button>
-              )}
               <button 
                 onClick={onClose}
                 className="text-slate-500 hover:text-emerald-400 font-bold transition-colors cursor-pointer uppercase"
