@@ -961,61 +961,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Trigger OxaPay Auto Payout
+    const newTx: Transaction = {
+      id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
+      type: 'withdraw',
+      amount, // Total gross amount deducted from user balance
+      status: 'pending',
+      date: new Date().toLocaleString(),
+      txHash: address,
+      address: address, // Set both so legacy and new structures read it
+      fee,
+      netAmount,
+      timestamp: Date.now()
+    };
+
     try {
-      const payoutResponse = await fetch('/api/oxapay/payout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          apiKey: oxapayPayoutApiKey,
-          address: address,
-          amount: netAmount
-        })
-      });
+      // Save transaction to subcollection
+      const txDocRef = doc(db, 'users', user.id, 'transactions', newTx.id);
+      await setDoc(txDocRef, newTx);
 
-      const resData = await payoutResponse.json();
+      // Update balance
+      const newBalance = Number((user.balance - amount).toFixed(2));
+      await updateDoc(doc(db, 'users', user.id), { balance: newBalance });
 
-      if (resData.status === 200 || resData.status === '200' || resData.status === 'success') {
-        const trackId = resData.trackId || resData.track_id || (resData.data && (resData.data.trackId || resData.data.track_id)) || '';
-        const payoutStatus = resData.payoutStatus || resData.status || (resData.data && resData.data.status) || 'success';
+      // Synchronize states
+      setTransactions(prev => [newTx, ...prev]);
+      setUser(prev => prev ? { ...prev, balance: newBalance } : null);
 
-        const newTx: Transaction = {
-          id: 'TX-' + Math.floor(100000 + Math.random() * 900000),
-          type: 'withdraw',
-          amount, // Total gross amount deducted from user balance
-          status: 'completed', // Immediately completed on success!
-          date: new Date().toLocaleString(),
-          txHash: address,
-          address: address, // Set both so legacy and new structures read it
-          fee,
-          netAmount,
-          timestamp: Date.now(),
-          payoutTrackId: String(trackId),
-          payoutStatus: String(payoutStatus)
-        };
-
-        // Save transaction to subcollection
-        const txDocRef = doc(db, 'users', user.id, 'transactions', newTx.id);
-        await setDoc(txDocRef, newTx);
-
-        // Update balance
-        const newBalance = Number((user.balance - amount).toFixed(2));
-        await updateDoc(doc(db, 'users', user.id), { balance: newBalance });
-
-        // Synchronize states
-        setTransactions(prev => [newTx, ...prev]);
-        setUser(prev => prev ? { ...prev, balance: newBalance } : null);
-
-        return { success: true };
-      } else {
-        const errorMsg = resData.message || (resData.error && resData.error.message) || 'Unknown OxaPay error';
-        return { success: false, error: `OxaPay Payout Failed: ${errorMsg}. Your balance was not deducted.` };
-      }
-    } catch (payoutErr: any) {
-      console.error("Auto payout network exception:", payoutErr);
-      return { success: false, error: `Failed to communicate with OxaPay: ${payoutErr.message}. Your balance was not deducted.` };
+      return { success: true };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
+      return { success: false, error: 'Withdrawal failed. Database connection error.' };
     }
   };
 

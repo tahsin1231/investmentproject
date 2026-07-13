@@ -452,7 +452,9 @@ export const WalletView: React.FC = () => {
                         <td className="py-2">
                           <div className="flex items-center gap-1.5">
                             <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
-                              tx.status === 'completed' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                              tx.status === 'completed' ? 'bg-emerald-500/20 text-emerald-300' :
+                              tx.status === 'rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/10' :
+                              'bg-amber-500/20 text-amber-300'
                             }`}>
                               {tx.status}
                             </span>

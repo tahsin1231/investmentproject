@@ -391,7 +391,12 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         alert(`Withdrawal approved and OxaPay Payout processed successfully!\nTrack ID: ${trackId}`);
       } else {
         const errorMsg = resData.message || (resData.error && resData.error.message) || 'Unknown OxaPay error';
-        alert(`OxaPay Payout Failed: ${errorMsg}\n\nThe transaction has been kept as pending. Please verify your Payout API key and OxaPay balance before trying again.`);
+        
+        if (errorMsg.toLowerCase().includes('balance') || errorMsg.toLowerCase().includes('insufficient')) {
+          alert(`❌ OXAPAY PAYOUT FAILED: INSUFFICIENT BALANCE\n\nYour OxaPay payout account does not have enough balance to complete this transfer.\n\nPlease top up your OxaPay merchant/payout wallet and try again. The transaction status remains PENDING.`);
+        } else {
+          alert(`OxaPay Payout Failed: ${errorMsg}\n\nThe transaction has been kept as pending. Please verify your Payout API key and OxaPay balance before trying again.`);
+        }
         addAuditLog(`OxaPay Payout Failed for Tx ${tx.id}: ${errorMsg}`, userId);
       }
       

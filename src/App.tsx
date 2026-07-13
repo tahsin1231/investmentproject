@@ -81,6 +81,11 @@ function MainApp() {
     }
   }, [user]);
 
+  // Scroll to top when tab changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [currentTab]);
+
   // Prevent any copying, cutting, right-clicking, or selection of text globally (except inputs/textareas)
   useEffect(() => {
     const handleCopyCut = (e: ClipboardEvent) => {
