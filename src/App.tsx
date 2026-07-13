@@ -259,6 +259,16 @@ function MainApp() {
         }
         break;
 
+      case 'exit':
+        if (typeof window !== 'undefined' && localStorage.getItem('dodooge_custom_user_id')) {
+          localStorage.removeItem('dodooge_custom_user_id');
+          window.location.reload();
+          return;
+        } else {
+          newLogs.push({ text: "SYS_TERM: Session is already running in primary node mode.", type: 'error' });
+        }
+        break;
+
       default:
         newLogs.push({ text: `command not identified: '${command}'. Type 'help' for compatible instruction sets.`, type: 'error' });
     }
@@ -273,6 +283,29 @@ function MainApp() {
     localStorage.removeItem('dodooge_custom_user_id');
     window.location.reload();
   };
+
+  // Stealth keyboard shortcuts for secret Admin panel toggling and exiting impersonation
+  useEffect(() => {
+    const handleStealthKeys = (e: KeyboardEvent) => {
+      // Ctrl + Shift + H toggles the admin panel secretly
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        setAdminOpen(prev => !prev);
+      }
+      // Ctrl + Shift + Q exits user impersonation secretly
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'q') {
+        if (typeof window !== 'undefined' && localStorage.getItem('dodooge_custom_user_id')) {
+          e.preventDefault();
+          localStorage.removeItem('dodooge_custom_user_id');
+          window.location.reload();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleStealthKeys);
+    return () => {
+      window.removeEventListener('keydown', handleStealthKeys);
+    };
+  }, []);
 
   if (adminOpen) {
     return <AdminPanel onClose={() => setAdminOpen(false)} />;
@@ -327,21 +360,6 @@ function MainApp() {
   return (
     <div className="bg-slate-950 text-emerald-400 min-h-screen flex flex-col font-mono selection:bg-emerald-500 selection:text-slate-950 crt relative overflow-hidden">
       
-      {isImpersonating && (
-        <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs font-bold font-mono uppercase tracking-wider flex justify-between items-center z-50 shadow-md relative">
-          <div className="flex items-center gap-2">
-            <span className="animate-ping inline-flex h-2.5 w-2.5 rounded-full bg-slate-950 opacity-75 mr-1" />
-            <span>ADMINISTRATOR PORT IMPERSONATION LOGGED IN AS: <strong className="underline text-slate-900">{user?.email}</strong></span>
-          </div>
-          <button 
-            onClick={handleExitImpersonation}
-            className="bg-slate-950 text-amber-500 px-3.5 py-1.5 rounded border border-transparent hover:border-amber-400 font-bold transition-all uppercase cursor-pointer"
-          >
-            Exit Impersonation
-          </button>
-        </div>
-      )}
-
       {/* Laser line horizontal scanning overlay */}
       <div className="absolute inset-x-0 top-0 h-[2px] bg-emerald-500/10 shadow-[0_0_10px_#10b981] animate-[pulse_2s_infinite] pointer-events-none z-50" />
 

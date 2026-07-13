@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Cpu, Newspaper, ArrowRight, Zap, RefreshCw, Radio } from 'lucide-react';
+import { Cpu, Newspaper, ArrowRight, Zap, RefreshCw, Radio, HelpCircle } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -322,6 +322,45 @@ export const HomeView: React.FC = () => {
 
             <div className="text-[10px] text-slate-500 bg-slate-950 p-2.5 rounded border border-slate-850 uppercase leading-normal">
               ℹ️ Mining speed scales dynamically based on your deployed AI plan models. Collect yields anytime.
+            </div>
+          </div>
+
+          {/* Dodooge Support Helpdesk Widget */}
+          <div className="bg-slate-900/60 border border-emerald-500/25 p-5 rounded-xl space-y-4 shadow-lg">
+            <div className="flex items-center space-x-2">
+              <HelpCircle className="w-4 h-4 text-emerald-400" />
+              <h3 className="font-mono text-xs font-bold text-white uppercase tracking-wider">
+                System Support Hub
+              </h3>
+            </div>
+            
+            <p className="text-[11px] text-slate-400 leading-relaxed uppercase">
+              Need assistance with node deployment, verification, deposits or withdrawals? Connect directly with support operators.
+            </p>
+
+            <div className="space-y-2 text-xs font-mono">
+              <div className="flex flex-col space-y-1 bg-slate-950 p-2.5 rounded border border-emerald-500/10">
+                <span className="text-[8px] text-emerald-500/40 uppercase tracking-widest font-bold">TELEGRAM HOTLINE</span>
+                <a 
+                  href="https://t.me/Dodooge_Support" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-emerald-400 hover:text-emerald-300 font-bold flex items-center justify-between"
+                >
+                  <span>@Dodooge_Support</span>
+                  <span className="text-[8px] px-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded font-normal uppercase animate-pulse">ACTIVE</span>
+                </a>
+              </div>
+
+              <div className="flex flex-col space-y-1 bg-slate-950 p-2.5 rounded border border-emerald-500/10">
+                <span className="text-[8px] text-emerald-500/40 uppercase tracking-widest font-bold">OFFICIAL EMAIL</span>
+                <a 
+                  href="mailto:dodoogesupport@gmail.com" 
+                  className="text-emerald-400 hover:text-emerald-300 truncate block font-mono hover:underline"
+                >
+                  dodoogesupport@gmail.com
+                </a>
+              </div>
             </div>
           </div>
 

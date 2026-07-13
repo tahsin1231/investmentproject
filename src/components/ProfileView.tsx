@@ -24,61 +24,97 @@ export const ProfileView: React.FC = () => {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start font-mono text-emerald-400">
       
       {/* Profile Info Details (4 cols) */}
-      <div className="lg:col-span-4 bg-slate-950 border border-emerald-500/30 rounded-xl p-5 space-y-5 shadow-lg shadow-emerald-950/10">
-        <div>
-          <span className="text-[9px] text-emerald-500/50 uppercase tracking-widest block mb-1">ACCOUNT_IDENTITY</span>
-          <h3 className="font-bold text-white text-xs truncate">{user.email}</h3>
-          <p className="text-[9px] text-emerald-500/40 mt-1 uppercase">Node UUID: {user.id}</p>
+      <div className="lg:col-span-4 space-y-6">
+        <div className="bg-slate-950 border border-emerald-500/30 rounded-xl p-5 space-y-5 shadow-lg shadow-emerald-950/10">
+          <div>
+            <span className="text-[9px] text-emerald-500/50 uppercase tracking-widest block mb-1">ACCOUNT_IDENTITY</span>
+            <h3 className="font-bold text-white text-xs truncate">{user.email}</h3>
+            <p className="text-[9px] text-emerald-500/40 mt-1 uppercase">Node UUID: {user.id}</p>
+          </div>
+
+          <div className="border-t border-emerald-500/10 pt-4 space-y-3 text-xs">
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-emerald-500/55 uppercase">FIRST NAME</span>
+              <span className="text-white font-semibold">{user.firstName || 'NOT PROVIDED'}</span>
+            </div>
+
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-emerald-500/55 uppercase">LAST NAME</span>
+              <span className="text-white font-semibold">{user.lastName || 'NOT PROVIDED'}</span>
+            </div>
+
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-emerald-500/55 uppercase">USERNAME</span>
+              <span className="text-emerald-300 font-bold font-mono">@{user.username || 'NOT_SET'}</span>
+            </div>
+
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-emerald-500/55 uppercase">PHONE</span>
+              <span className="text-white font-mono">{user.phone || 'NOT PROVIDED'}</span>
+            </div>
+          </div>
+
+          <div className="border-t border-emerald-500/10 pt-4 space-y-3.5 text-xs">
+            <div className="flex justify-between items-center">
+              <span className="text-emerald-500/55 uppercase">STATUS</span>
+              <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 text-[9px] font-bold">
+                <ShieldCheck className="w-3 h-3" />
+                <span>VERIFIED</span>
+              </span>
+            </div>
+
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-emerald-500/55 uppercase">PROTOCOL</span>
+              <span className="text-emerald-300">Secure PIN</span>
+            </div>
+
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-emerald-500/55 uppercase">ESTABLISHED</span>
+              <span className="text-emerald-500/50">{new Date(user.createdAt).toLocaleDateString()}</span>
+            </div>
+
+            <button
+              onClick={logout}
+              className="w-full mt-4 bg-slate-900 hover:bg-red-950/20 text-emerald-500/60 hover:text-red-400 border border-emerald-500/10 hover:border-red-500/30 rounded py-2 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>{t.logout}</span>
+            </button>
+          </div>
         </div>
 
-        <div className="border-t border-emerald-500/10 pt-4 space-y-3 text-xs">
-          <div className="flex justify-between items-center text-[11px]">
-            <span className="text-emerald-500/55 uppercase">FIRST NAME</span>
-            <span className="text-white font-semibold">{user.firstName || 'NOT PROVIDED'}</span>
+        {/* System Support Helpdesk Card */}
+        <div className="bg-slate-950 border border-emerald-500/30 rounded-xl p-5 space-y-4 shadow-lg shadow-emerald-950/10">
+          <div>
+            <span className="text-[9px] text-emerald-500/50 uppercase tracking-widest block mb-1">SYSTEM_SUPPORT</span>
+            <h3 className="font-bold text-white text-xs uppercase">DODOOGE HELPDESK</h3>
+            <p className="text-[9px] text-emerald-500/40 mt-1 uppercase">24/7 ENCRYPTED HOTLINE</p>
           </div>
 
-          <div className="flex justify-between items-center text-[11px]">
-            <span className="text-emerald-500/55 uppercase">LAST NAME</span>
-            <span className="text-white font-semibold">{user.lastName || 'NOT PROVIDED'}</span>
-          </div>
+          <div className="border-t border-emerald-500/10 pt-4 space-y-3">
+            <div className="flex flex-col space-y-1 bg-slate-900 border border-emerald-500/10 rounded p-2.5">
+              <span className="text-[8px] text-emerald-500/40 uppercase font-bold tracking-wider">TELEGRAM ACCOUNT</span>
+              <a 
+                href="https://t.me/Dodooge_Support" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-emerald-400 hover:text-emerald-300 font-bold text-[11px] flex items-center gap-1.5 transition-colors"
+              >
+                <span>@Dodooge_Support</span>
+                <span className="text-[8px] px-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded font-normal uppercase animate-pulse">ONLINE</span>
+              </a>
+            </div>
 
-          <div className="flex justify-between items-center text-[11px]">
-            <span className="text-emerald-500/55 uppercase">USERNAME</span>
-            <span className="text-emerald-300 font-bold font-mono">@{user.username || 'NOT_SET'}</span>
+            <div className="flex flex-col space-y-1 bg-slate-900 border border-emerald-500/10 rounded p-2.5">
+              <span className="text-[8px] text-emerald-500/40 uppercase font-bold tracking-wider">SUPPORT EMAIL</span>
+              <a 
+                href="mailto:dodoogesupport@gmail.com"
+                className="text-emerald-400 hover:text-emerald-300 font-mono text-[11px] truncate block hover:underline"
+              >
+                dodoogesupport@gmail.com
+              </a>
+            </div>
           </div>
-
-          <div className="flex justify-between items-center text-[11px]">
-            <span className="text-emerald-500/55 uppercase">PHONE</span>
-            <span className="text-white font-mono">{user.phone || 'NOT PROVIDED'}</span>
-          </div>
-        </div>
-
-        <div className="border-t border-emerald-500/10 pt-4 space-y-3.5 text-xs">
-          <div className="flex justify-between items-center">
-            <span className="text-emerald-500/55 uppercase">STATUS</span>
-            <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 text-[9px] font-bold">
-              <ShieldCheck className="w-3 h-3" />
-              <span>VERIFIED</span>
-            </span>
-          </div>
-
-          <div className="flex justify-between items-center text-[11px]">
-            <span className="text-emerald-500/55 uppercase">PROTOCOL</span>
-            <span className="text-emerald-300">Secure PIN</span>
-          </div>
-
-          <div className="flex justify-between items-center text-[11px]">
-            <span className="text-emerald-500/55 uppercase">ESTABLISHED</span>
-            <span className="text-emerald-500/50">{new Date(user.createdAt).toLocaleDateString()}</span>
-          </div>
-
-          <button
-            onClick={logout}
-            className="w-full mt-4 bg-slate-900 hover:bg-red-950/20 text-emerald-500/60 hover:text-red-400 border border-emerald-500/10 hover:border-red-500/30 rounded py-2 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>{t.logout}</span>
-          </button>
         </div>
       </div>
 

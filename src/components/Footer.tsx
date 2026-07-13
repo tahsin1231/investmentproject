@@ -29,7 +29,8 @@ export const Footer: React.FC = () => {
             <a href="#terms" className="hover:text-emerald-400 transition-colors">[Terms]</a>
             <a href="#privacy" className="hover:text-emerald-400 transition-colors">[Privacy]</a>
             <a href="#disclaimer" className="hover:text-emerald-400 transition-colors">[Risk]</a>
-            <a href="#help" className="hover:text-emerald-400 transition-colors">[System Status]</a>
+            <a href="https://t.me/Dodooge_Support" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:text-emerald-300 transition-colors font-bold">[Telegram Support]</a>
+            <a href="mailto:dodoogesupport@gmail.com" className="text-emerald-400 hover:text-emerald-300 transition-colors font-bold">[Email Support]</a>
           </div>
         </div>
 
