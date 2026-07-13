@@ -252,31 +252,34 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const fetchPlatformBalance = async () => {
     setLoadingPlatformBalance(true);
     try {
-      const qDeposits = query(
-        collectionGroup(db, 'transactions'),
-        where('type', '==', 'deposit'),
-        where('status', '==', 'completed')
-      );
-      const qWithdrawals = query(
-        collectionGroup(db, 'transactions'),
-        where('type', '==', 'withdraw'),
-        where('status', '==', 'completed')
-      );
-
-      const [snapDep, snapWith] = await Promise.all([
-        getDocs(qDeposits),
-        getDocs(qWithdrawals)
-      ]);
+      let currentUsers = users;
+      if (currentUsers.length === 0) {
+        const usersRef = collection(db, 'users');
+        const snap = await getDocs(usersRef);
+        currentUsers = snap.docs.map(d => d.data() as User);
+      }
 
       let totalDep = 0;
-      snapDep.docs.forEach(doc => {
-        totalDep += doc.data().amount || 0;
-      });
-
       let totalWith = 0;
-      snapWith.docs.forEach(doc => {
-        totalWith += doc.data().amount || 0;
-      });
+
+      await Promise.all(currentUsers.map(async (u) => {
+        try {
+          const txsRef = collection(db, 'users', u.id, 'transactions');
+          const txsSnap = await getDocs(txsRef);
+          txsSnap.docs.forEach(docSnap => {
+            const tx = docSnap.data() as Transaction;
+            if (tx.status === 'completed') {
+              if (tx.type === 'deposit') {
+                totalDep += tx.amount || 0;
+              } else if (tx.type === 'withdraw') {
+                totalWith += tx.amount || 0;
+              }
+            }
+          });
+        } catch (txErr) {
+          console.error(`Error loading platform balance transactions for user ${u.id}:`, txErr);
+        }
+      }));
 
       setTotalPlatformBalance(Number((totalDep - totalWith).toFixed(2)));
     } catch (err) {
@@ -318,30 +321,33 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const fetchPendingWithdrawals = async () => {
     setLoadingWithdrawals(true);
     try {
-      const q = query(
-        collectionGroup(db, 'transactions'),
-        where('type', '==', 'withdraw'),
-        where('status', '==', 'pending')
-      );
-      const snap = await getDocs(q);
-      const list = snap.docs.map(d => {
-        const tx = d.data() as Transaction;
-        const userId = d.ref.parent.parent?.id || '';
-        return {
-          ...tx,
-          userId,
-          userEmail: 'User ID: ' + userId.slice(0, 8)
-        };
-      });
+      let currentUsers = users;
+      if (currentUsers.length === 0) {
+        const usersRef = collection(db, 'users');
+        const snap = await getDocs(usersRef);
+        currentUsers = snap.docs.map(d => d.data() as User);
+      }
 
-      // Match real user emails if users list loaded
-      const enriched = list.map(tx => {
-        const found = users.find(u => u.id === tx.userId);
-        return {
-          ...tx,
-          userEmail: found ? found.email : tx.userEmail
-        };
-      });
+      const enriched: any[] = [];
+
+      await Promise.all(currentUsers.map(async (u) => {
+        try {
+          const txsRef = collection(db, 'users', u.id, 'transactions');
+          const txsSnap = await getDocs(txsRef);
+          txsSnap.docs.forEach(docSnap => {
+            const tx = docSnap.data() as Transaction;
+            if (tx.type === 'withdraw' && tx.status === 'pending') {
+              enriched.push({
+                ...tx,
+                userId: u.id,
+                userEmail: u.email || ('User ID: ' + u.id.slice(0, 8))
+              });
+            }
+          });
+        } catch (txErr) {
+          console.error(`Error loading pending withdrawals for user ${u.id}:`, txErr);
+        }
+      }));
 
       setPendingWithdrawals(enriched);
     } catch (err) {

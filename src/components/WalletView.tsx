@@ -359,7 +359,7 @@ export const WalletView: React.FC = () => {
               <label className="block text-[9px] text-emerald-500/60 uppercase mb-1">Withdrawal Amount ($)</label>
               <input
                 type="number"
-                min="5"
+                min={minWithdrawal}
                 step="any"
                 placeholder="0.00"
                 required
