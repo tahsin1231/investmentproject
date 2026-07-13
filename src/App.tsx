@@ -24,6 +24,7 @@ function MainApp() {
   const [currentTab, setCurrentTab] = useState<'home' | 'markets' | 'earn' | 'wallet' | 'profile'>('home');
   const [authView, setAuthView] = useState<'login' | 'register' | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [isAdminStealth, setIsAdminStealth] = useState(false);
 
   // Shell CLI States
   const [cmdInput, setCmdInput] = useState('');
@@ -38,13 +39,23 @@ function MainApp() {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [terminalLogs]);
 
-  // Listen to /admin route or admin command
+  // Listen to /admin or /tahsin route or admin command
   useEffect(() => {
     const handleLocationCheck = () => {
       const path = window.location.pathname;
       const hash = window.location.hash;
       const search = window.location.search;
       if (
+        path === '/tahsin' || 
+        path.endsWith('/tahsin') || 
+        hash === '#/tahsin' || 
+        hash === '#tahsin' ||
+        search.includes('tahsin=true') ||
+        search.includes('view=tahsin')
+      ) {
+        setIsAdminStealth(true);
+        setAdminOpen(true);
+      } else if (
         path === '/admin' || 
         path.endsWith('/admin') || 
         hash === '#/admin' || 
@@ -52,6 +63,7 @@ function MainApp() {
         search.includes('admin=true') ||
         search.includes('view=admin')
       ) {
+        setIsAdminStealth(false);
         setAdminOpen(true);
       }
     };
@@ -308,7 +320,7 @@ function MainApp() {
   }, []);
 
   if (adminOpen) {
-    return <AdminPanel onClose={() => setAdminOpen(false)} />;
+    return <AdminPanel onClose={() => setAdminOpen(false)} initialStealthMode={isAdminStealth} />;
   }
 
   const isAdminSession = user && user.email === 'admin@gmail.com';

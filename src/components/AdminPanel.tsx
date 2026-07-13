@@ -59,8 +59,10 @@ interface AuditLog {
   target: string;
 }
 
-export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: boolean }> = ({ onClose, initialStealthMode = false }) => {
   // Auth states
+  const [isStealth, setIsStealth] = useState(initialStealthMode);
+  const [stealthPassword, setStealthPassword] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -152,6 +154,10 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   // Monitor Auth Status on load
   useEffect(() => {
     const checkAuth = async () => {
+      if (isStealth) {
+        // Under stealth mode, we bypass automated login on load
+        return;
+      }
       const currentUser = auth.currentUser;
       if (currentUser && currentUser.email === 'admin@gmail.com') {
         setIsAuthorized(true);
@@ -161,20 +167,69 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         fetchPlans();
         fetchPendingWithdrawals();
         fetchPlatformBalance();
+        fetchAuditLogs();
         addAuditLog('Authorized Session', 'System Mainframe');
       }
     };
     checkAuth();
   }, []);
 
+  // Fetch all persistent audit logs (if NOT in stealth mode)
+  const fetchAuditLogs = async () => {
+    if (isStealth) return;
+    try {
+      const logsRef = collection(db, 'audit_logs');
+      const snap = await getDocs(logsRef);
+      const list = snap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          timestamp: data.timestamp || '',
+          date: data.date || '',
+          action: data.action || '',
+          target: data.target || ''
+        } as AuditLog;
+      });
+      list.sort((a, b) => {
+        const timeA = (a as any).createdAt || 0;
+        const timeB = (b as any).createdAt || 0;
+        return timeB - timeA;
+      });
+      setAuditLogs(list);
+    } catch (err) {
+      console.error('Error fetching audit logs:', err);
+    }
+  };
+
   // Log audit helper
-  const addAuditLog = (action: string, target: string) => {
+  const addAuditLog = async (action: string, target: string) => {
+    if (isStealth) return;
+
+    const logDateStr = new Date().toLocaleString();
+    const logTimeStr = new Date().toLocaleTimeString();
+
     const log: AuditLog = {
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: logTimeStr,
       action,
       target
     };
+    // Keep local list reactive
     setAuditLogs(prev => [log, ...prev]);
+
+    try {
+      const logId = 'LOG-' + Math.floor(100000 + Math.random() * 900000);
+      const logRef = doc(db, 'audit_logs', logId);
+      await setDoc(logRef, {
+        id: logId,
+        timestamp: logTimeStr,
+        date: logDateStr,
+        action,
+        target,
+        createdAt: Date.now()
+      });
+    } catch (err) {
+      console.error('Error saving audit log to Firestore:', err);
+    }
   };
 
   // Authenticate Admin
@@ -215,6 +270,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         await setDoc(adminDocRef, adminProfile);
       }
 
+      setIsStealth(false); // Force off stealth mode in standard route
       setIsAuthorized(true);
       setAuthLoading(false);
       fetchUsers();
@@ -222,12 +278,35 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       fetchGlobalSettings();
       fetchPlans();
       fetchPendingWithdrawals();
+      fetchAuditLogs();
       addAuditLog('Successful Mainframe Login', 'admin@gmail.com');
     } catch (err: any) {
       console.error(err);
       setAuthError(err.message || 'Authentication rejected by security mainframe.');
       setAuthLoading(false);
     }
+  };
+
+  // Authenticate Stealth Admin
+  const handleStealthLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+
+    if (stealthPassword !== 'Tahsin23') {
+      setAuthError('Access Rejected: Invalid Stealth Password Key.');
+      setAuthLoading(false);
+      return;
+    }
+
+    setIsStealth(true); // Force stealth mode on
+    setIsAuthorized(true);
+    setAuthLoading(false);
+    fetchUsers();
+    fetchPromoCodes();
+    fetchGlobalSettings();
+    fetchPlans();
+    fetchPendingWithdrawals();
   };
 
   // Fetch all users in platform
@@ -257,7 +336,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     }
   };
 
-  // Calculate live platform balance: sum of completed deposits minus completed withdrawals
+  // Calculate live platform balance: sum of all user balances
   const fetchPlatformBalance = async () => {
     setLoadingPlatformBalance(true);
     try {
@@ -266,37 +345,30 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         const usersRef = collection(db, 'users');
         const snap = await getDocs(usersRef);
         currentUsers = snap.docs.map(d => d.data() as User);
+        setUsers(currentUsers);
       }
 
-      let totalDep = 0;
-      let totalWith = 0;
+      let totalBalancesSum = 0;
+      currentUsers.forEach(u => {
+        totalBalancesSum += typeof u.balance === 'number' ? u.balance : parseFloat(u.balance || '0') || 0;
+      });
 
-      await Promise.all(currentUsers.map(async (u) => {
-        try {
-          const txsRef = collection(db, 'users', u.id, 'transactions');
-          const txsSnap = await getDocs(txsRef);
-          txsSnap.docs.forEach(docSnap => {
-            const tx = docSnap.data() as Transaction;
-            if (tx.status === 'completed') {
-              if (tx.type === 'deposit') {
-                totalDep += tx.amount || 0;
-              } else if (tx.type === 'withdraw') {
-                totalWith += tx.amount || 0;
-              }
-            }
-          });
-        } catch (txErr) {
-          console.error(`Error loading platform balance transactions for user ${u.id}:`, txErr);
-        }
-      }));
-
-      setTotalPlatformBalance(Number((totalDep - totalWith).toFixed(2)));
+      setTotalPlatformBalance(Number(totalBalancesSum.toFixed(2)));
     } catch (err) {
       console.error('Error fetching platform balance:', err);
     } finally {
       setLoadingPlatformBalance(false);
     }
   };
+
+  // Keep total platform balance synchronized with local users state changes
+  useEffect(() => {
+    let totalBalancesSum = 0;
+    users.forEach(u => {
+      totalBalancesSum += typeof u.balance === 'number' ? u.balance : parseFloat(u.balance || '0') || 0;
+    });
+    setTotalPlatformBalance(Number(totalBalancesSum.toFixed(2)));
+  }, [users]);
 
   // Fetch system global configs
   const fetchGlobalSettings = async () => {
@@ -465,6 +537,40 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const link = document.createElement('a');
     link.href = url;
     link.download = `ledger_tx_history_${Date.now()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadAuditLogs = () => {
+    if (isStealth) return;
+    if (auditLogs.length === 0) {
+      alert("No action logs available to export.");
+      return;
+    }
+
+    let content = `============================================================\n`;
+    content += `         PLATFORM ADMINISTRATIVE ACTION AUDIT LOGS\n`;
+    content += `============================================================\n`;
+    content += `Generated On: ${new Date().toLocaleString()}\n`;
+    content += `Total Actions Logged: ${auditLogs.length}\n`;
+    content += `============================================================\n\n`;
+
+    auditLogs.forEach((log, idx) => {
+      const dt = log.date || log.timestamp || 'N/A';
+      content += `[${dt}] ACTION: ${log.action} | TARGET: ${log.target}\n`;
+    });
+
+    content += `\n============================================================\n`;
+    content += `                     END OF AUDIT JOURNAL\n`;
+    content += `============================================================\n`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `admin_audit_logs_${Date.now()}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -979,9 +1085,11 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   // Sign out admin
   const handleLogoutAdmin = async () => {
-    await signOut(auth);
+    if (!isStealth) {
+      await signOut(auth);
+      addAuditLog('Admin Logged Out', 'System Security');
+    }
     setIsAuthorized(false);
-    addAuditLog('Admin Logged Out', 'System Security');
     onClose();
   };
 
@@ -1009,8 +1117,12 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400 mb-3 animate-pulse">
               <ShieldAlert className="w-8 h-8" />
             </div>
-            <h1 className="text-lg font-bold uppercase tracking-widest text-white">Mainframe Access Required</h1>
-            <p className="text-[10px] text-emerald-500/50 uppercase mt-1">DODOOGE_CLI Security protocol v3.8</p>
+            <h1 className="text-lg font-bold uppercase tracking-widest text-white">
+              {isStealth ? 'Stealth Access Mainframe' : 'Mainframe Access Required'}
+            </h1>
+            <p className="text-[10px] text-emerald-500/50 uppercase mt-1">
+              {isStealth ? 'TAHSIN_SECURE_TUNNEL TTY/1' : 'DODOOGE_CLI Security protocol v3.8'}
+            </p>
           </div>
 
           {authError && (
@@ -1020,64 +1132,118 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             </div>
           )}
 
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <div>
-              <label className="block text-[10px] font-mono uppercase tracking-widest text-emerald-500/60 mb-1.5">
-                Admin Email Secure Port
-              </label>
-              <input
-                type="email"
-                required
-                disabled={authLoading}
-                placeholder="admin@gmail.com"
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl py-3 px-4 text-xs text-white placeholder-slate-700 focus:outline-none transition-colors"
-              />
-            </div>
+          {isStealth ? (
+            <form onSubmit={handleStealthLogin} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-widest text-emerald-500/60 mb-1.5">
+                  Stealth Access Key (Password)
+                </label>
+                <input
+                  type="password"
+                  required
+                  disabled={authLoading}
+                  placeholder="••••••••"
+                  value={stealthPassword}
+                  onChange={(e) => setStealthPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl py-3 px-4 text-xs text-white placeholder-slate-700 focus:outline-none transition-colors"
+                />
+              </div>
 
-            <div>
-              <label className="block text-[10px] font-mono uppercase tracking-widest text-emerald-500/60 mb-1.5">
-                Access Password Key
-              </label>
-              <input
-                type="password"
-                required
+              <button
+                type="submit"
                 disabled={authLoading}
-                placeholder="••••••••"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl py-3 px-4 text-xs text-white placeholder-slate-700 focus:outline-none transition-colors"
-              />
-            </div>
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 px-4 rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-2 border border-emerald-300"
+              >
+                {authLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>DECRYPTING TUNNEL...</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>AUTHORIZE STEALTH</span>
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-widest text-emerald-500/60 mb-1.5">
+                  Admin Email Secure Port
+                </label>
+                <input
+                  type="email"
+                  required
+                  disabled={authLoading}
+                  placeholder="admin@gmail.com"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl py-3 px-4 text-xs text-white placeholder-slate-700 focus:outline-none transition-colors"
+                />
+              </div>
 
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 px-4 rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-2 border border-emerald-300"
-            >
-              {authLoading ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>DECRYPTING CREDENTIALS...</span>
-                </>
-              ) : (
-                <>
-                  <Unlock className="w-3.5 h-3.5" />
-                  <span>AUTHORIZE ACCESS</span>
-                </>
-              )}
-            </button>
-          </form>
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-widest text-emerald-500/60 mb-1.5">
+                  Access Password Key
+                </label>
+                <input
+                  type="password"
+                  required
+                  disabled={authLoading}
+                  placeholder="••••••••"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl py-3 px-4 text-xs text-white placeholder-slate-700 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 px-4 rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-2 border border-emerald-300"
+              >
+                {authLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>DECRYPTING CREDENTIALS...</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>AUTHORIZE ACCESS</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
 
           <div className="mt-6 pt-4 border-t border-emerald-500/10 flex items-center justify-between text-[9px] text-emerald-500/35 uppercase">
             <span>PORT_3000_INGRESS</span>
-            <button 
-              onClick={onClose}
-              className="text-slate-500 hover:text-emerald-400 font-bold transition-colors cursor-pointer uppercase"
-            >
-              &lt; Return to terminal
-            </button>
+            <div className="flex gap-4">
+              {isStealth ? (
+                <button 
+                  onClick={() => { setIsStealth(false); setAuthError(null); }}
+                  className="text-amber-500 hover:text-amber-400 font-bold transition-colors cursor-pointer uppercase font-mono"
+                >
+                  Admin Login
+                </button>
+              ) : (
+                <button 
+                  onClick={() => { setIsStealth(true); setAuthError(null); }}
+                  className="text-blue-500 hover:text-blue-400 font-bold transition-colors cursor-pointer uppercase font-mono"
+                >
+                  Tahsin Tunnel
+                </button>
+              )}
+              <button 
+                onClick={onClose}
+                className="text-slate-500 hover:text-emerald-400 font-bold transition-colors cursor-pointer uppercase"
+              >
+                &lt; Return to terminal
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1225,12 +1391,30 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <div className="border border-emerald-500/20 bg-slate-950/80 rounded-xl p-4">
             <div className="flex justify-between items-center mb-2">
               <p className="text-[10px] font-bold text-emerald-500/40 uppercase tracking-widest">
-                SESSION AUDIT TRAIL
+                {isStealth ? 'STEALTH AUDIT TRAIL' : 'SYSTEM AUDIT TRAIL'}
               </p>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              {isStealth ? (
+                <span className="text-[9px] text-red-500 font-bold bg-red-500/10 border border-red-500/20 px-1 py-0.5 rounded font-mono animate-pulse">
+                  OFFLINE
+                </span>
+              ) : (
+                <button
+                  onClick={handleDownloadAuditLogs}
+                  className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 font-bold rounded text-[8px] uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer border border-emerald-500/20"
+                  title="Download All Admin Action Logs"
+                >
+                  <Download className="w-2.5 h-2.5" />
+                  <span>Download Logs</span>
+                </button>
+              )}
             </div>
             <div className="h-44 overflow-y-auto space-y-1.5 scrollbar text-[10px] font-mono bg-slate-950 p-2.5 border border-emerald-500/10 rounded-lg">
-              {auditLogs.length === 0 ? (
+              {isStealth ? (
+                <div className="text-red-500/70 italic text-center py-12 leading-relaxed">
+                  [!] STEALTH MODE ACTIVE.<br />
+                  ADMIN ACTIONS ARE NOT BEING MONITORED OR RECORDED.
+                </div>
+              ) : auditLogs.length === 0 ? (
                 <div className="text-slate-700 italic text-center py-8">No session events logged.</div>
               ) : (
                 auditLogs.map((log, i) => (
