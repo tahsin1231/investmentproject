@@ -357,41 +357,55 @@ export const MarketsView: React.FC = () => {
     <div className="space-y-6">
       
       {/* Dynamic OTC Top Banner info */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-emerald-500/0 via-emerald-500/40 to-emerald-500/0" />
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-slate-950 border-2 border-slate-900 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500/10 via-emerald-500/50 to-amber-500/50" />
         
-        <div className="flex items-center space-x-4 mb-4 md:mb-0">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <Zap className="w-6 h-6 animate-pulse" />
+        {/* Left Side: Market Asset Profile (5 columns) */}
+        <div className="md:col-span-5 flex items-center space-x-4 border-b md:border-b-0 md:border-r border-slate-900 pb-4 md:pb-0 md:pr-4">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+            <Zap className="w-7 h-7 animate-bounce" />
           </div>
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-lg font-extrabold text-white tracking-tight">{assetName}</span>
-              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md font-mono text-[9px] font-bold tracking-widest uppercase">
-                OTC Market
+            <div className="flex items-center space-x-2.5">
+              <span className="text-xl font-black text-white tracking-tight">{assetName}</span>
+              <span className="px-2.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/35 rounded-md font-mono text-[9px] font-black tracking-widest uppercase animate-pulse">
+                LIVE
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 uppercase tracking-wider font-mono mt-0.5">
-              Current Contract Round ID: #{currentRoundId}
-            </p>
+            <div className="mt-1.5 flex flex-col">
+              <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold font-mono">LIVE INDEX PRICE</span>
+              <span className="text-2xl font-black font-mono text-emerald-400 tracking-tight transition-all">
+                ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center space-x-6">
-          <div className="text-right">
-            <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">OTC INDEX Price</p>
-            <span className="text-2xl font-black font-mono text-white tracking-tight transition-all">
-              ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </span>
+        {/* Center Panel: GIANT HIGH-VISIBILITY ROUND ID (3 columns) */}
+        <div className="md:col-span-3 flex flex-col justify-center items-center bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
+          <span className="text-[10px] text-amber-500 uppercase tracking-widest font-black flex items-center gap-1.5 mb-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+            CURRENT ACTIVE ROUND
+          </span>
+          <div className="text-3xl font-extrabold font-mono text-white tracking-wider">
+            #{currentRoundId}
           </div>
+        </div>
 
-          <div className="border-l border-slate-800 pl-6 h-10 flex flex-col justify-center">
-            <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Timer Round</p>
-            <div className="flex items-center space-x-1.5 text-emerald-400 font-mono text-lg font-black">
-              <Clock className="w-4 h-4 text-emerald-500 animate-spin-slow" />
-              <span>00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}</span>
-            </div>
+        {/* Right Panel: GIANT HIGH-VISIBILITY COUNTDOWN TIMER (4 columns) */}
+        <div className="md:col-span-4 flex flex-col justify-center items-center bg-slate-900/80 border-2 border-emerald-500/25 rounded-2xl p-4 text-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-1">
+            <Clock className="w-3.5 h-3.5 text-emerald-500/20 animate-spin-slow" />
           </div>
+          <span className="text-[10px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-1.5 mb-0.5">
+            ⏳ TIME REMAINING
+          </span>
+          <div className={`text-4xl font-black font-mono tracking-widest ${timeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
+            00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+          </div>
+          <p className="text-[8px] text-slate-500 font-mono mt-1 uppercase tracking-wider font-bold">
+            {timeLeft <= 10 ? '🚨 LOCKOUT WARNING: CLOSING ROUND' : 'Contracts Auto-Settling at 00:00'}
+          </p>
         </div>
       </div>
 
