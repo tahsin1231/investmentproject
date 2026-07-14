@@ -51,6 +51,72 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
           </div>
         </div>
 
+        {/* Center Navigation Links (Only visible on desktop screens) */}
+        {user && user.isVerified && (
+          <nav className="hidden lg:flex items-center space-x-1.5 bg-slate-900/60 p-1 border border-emerald-500/15 rounded-xl">
+            <button
+              onClick={() => setCurrentTab('home')}
+              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-bold font-mono uppercase tracking-wider transition-all cursor-pointer ${
+                currentTab === 'home'
+                  ? 'bg-emerald-500 text-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                  : 'text-emerald-500/70 hover:text-emerald-400 hover:bg-slate-950/40'
+              }`}
+            >
+              Home
+            </button>
+            <button
+              onClick={() => setCurrentTab('markets')}
+              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-bold font-mono uppercase tracking-wider transition-all cursor-pointer ${
+                currentTab === 'markets'
+                  ? 'bg-emerald-500 text-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                  : 'text-emerald-500/70 hover:text-emerald-400 hover:bg-slate-950/40'
+              }`}
+            >
+              {t.markets}
+            </button>
+            <button
+              onClick={() => setCurrentTab('earn')}
+              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-bold font-mono uppercase tracking-wider transition-all cursor-pointer ${
+                currentTab === 'earn'
+                  ? 'bg-emerald-500 text-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                  : 'text-emerald-500/70 hover:text-emerald-400 hover:bg-slate-950/40'
+              }`}
+            >
+              {t.earn}
+            </button>
+            <button
+              onClick={() => setCurrentTab('wallet')}
+              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-bold font-mono uppercase tracking-wider transition-all cursor-pointer ${
+                currentTab === 'wallet'
+                  ? 'bg-emerald-500 text-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                  : 'text-emerald-500/70 hover:text-emerald-400 hover:bg-slate-950/40'
+              }`}
+            >
+              {t.wallet.split(' ')[0]}
+            </button>
+            <button
+              onClick={() => setCurrentTab('referral')}
+              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-bold font-mono uppercase tracking-wider transition-all cursor-pointer ${
+                currentTab === 'referral'
+                  ? 'bg-emerald-500 text-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                  : 'text-emerald-500/70 hover:text-emerald-400 hover:bg-slate-950/40'
+              }`}
+            >
+              Referral
+            </button>
+            <button
+              onClick={() => setCurrentTab('profile')}
+              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-bold font-mono uppercase tracking-wider transition-all cursor-pointer ${
+                currentTab === 'profile'
+                  ? 'bg-emerald-500 text-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                  : 'text-emerald-500/70 hover:text-emerald-400 hover:bg-slate-950/40'
+              }`}
+            >
+              {t.profile}
+            </button>
+          </nav>
+        )}
+
         {/* Right Side */}
         <div className="flex items-center space-x-2 sm:space-x-4">
           {/* Language Selector */}

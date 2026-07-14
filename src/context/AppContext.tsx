@@ -522,8 +522,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!emailLower.endsWith('@gmail.com')) {
         return { success: false, error: 'Only @gmail.com email addresses are permitted. Temporary and other email domains are strictly prohibited.' };
       }
-      const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      const fbUser = userCred.user;
+
+      let fbUser: { uid: string };
+      let usedCustomFallback = false;
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        fbUser = { uid: userCred.user.uid };
+      } catch (authErr: any) {
+        console.warn("Firebase auth registration failed, trying custom Firestore fallback:", authErr);
+        if (authErr.code === 'auth/email-already-in-use') {
+          return { success: false, error: 'This email address is already in use.' };
+        }
+        if (authErr.code === 'auth/weak-password') {
+          return { success: false, error: 'Password is too weak. Please use at least 6 characters.' };
+        }
+
+        // Verify email uniqueness in Firestore manually to prevent duplicates
+        const emailQuery = query(usersRef, where('email', '==', emailLower));
+        const emailSnap = await getDocs(emailQuery);
+        if (!emailSnap.empty) {
+          return { success: false, error: 'This email address is already in use.' };
+        }
+
+        const customId = 'usr_' + Math.random().toString(36).substring(2, 15);
+        fbUser = { uid: customId };
+        usedCustomFallback = true;
+      }
 
       const refCode = 'DOGE-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -564,6 +588,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Set user profile in Firestore
       await setDoc(doc(db, 'users', fbUser.uid), newUser);
       setUser(newUser);
+
+      // Save custom user ID so we can bypass Auth completely on reload
+      localStorage.setItem('dodooge_custom_user_id', fbUser.uid);
 
       // Clean pending referral
       localStorage.removeItem('dodooge_pending_referral');
@@ -653,7 +680,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         
         setUser(userData);
-        localStorage.removeItem('dodooge_custom_user_id');
+        localStorage.setItem('dodooge_custom_user_id', fbUser.uid);
 
         const plansSnap = await getDocs(collection(db, 'users', fbUser.uid, 'activePlans'));
         const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
@@ -730,6 +757,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUser(newUser);
         setActivePlans([]);
         setTransactions([]);
+        localStorage.setItem('dodooge_custom_user_id', fbUser.uid);
       } else {
         const userData = userSnap.data() as User;
         if (userData.isBanned) {
@@ -742,6 +770,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           userData.isVerified = true;
         }
         setUser(userData);
+        localStorage.setItem('dodooge_custom_user_id', fbUser.uid);
 
         const plansSnap = await getDocs(collection(db, 'users', fbUser.uid, 'activePlans'));
         const plansList = plansSnap.docs.map(d => d.data() as ActivePlan);
@@ -776,6 +805,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTransactions([]);
       setMiningActive(false);
       setMiningBalance(0);
+      localStorage.removeItem('dodooge_custom_user_id');
     } catch (error) {
       console.error("Error signing out:", error);
     }

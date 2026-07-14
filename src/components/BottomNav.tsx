@@ -15,7 +15,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab 
   if (!user || !user.isVerified) return null;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 bg-slate-950/95 backdrop-blur-md border-t border-emerald-500/30 py-2.5 px-4 z-50 shadow-[0_-8px_24px_rgba(16,185,129,0.08)]">
+    <div className="fixed bottom-0 inset-x-0 bg-slate-950/95 backdrop-blur-md border-t border-emerald-500/30 py-2.5 px-4 z-50 shadow-[0_-8px_24px_rgba(16,185,129,0.08)] lg:hidden">
       <div className="max-w-2xl mx-auto flex justify-around items-center">
         {/* Home option */}
         <button

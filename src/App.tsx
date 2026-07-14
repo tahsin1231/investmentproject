@@ -26,6 +26,14 @@ function MainApp() {
   const [authView, setAuthView] = useState<'login' | 'register' | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [isAdminStealth, setIsAdminStealth] = useState(false);
+  const [terminalCollapsed, setTerminalCollapsed] = useState(false);
+
+  // Auto-collapse terminal on smaller mobile/tablet viewports to maximize workspace space
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setTerminalCollapsed(true);
+    }
+  }, []);
 
   // Shell CLI States
   const [cmdInput, setCmdInput] = useState('');
@@ -394,10 +402,10 @@ function MainApp() {
       <main className="flex-1 flex flex-col pb-24">
         {user && user.isVerified ? (
           /* Logged In Dashboard View */
-          <div className="max-w-7xl mx-auto px-4 py-6 w-full flex-1 space-y-6">
+          <div className="max-w-7xl mx-auto px-4 py-6 w-full flex-1 flex flex-col gap-6 lg:grid lg:grid-cols-12">
             
             {/* Interactive Shell Console Terminal */}
-            <div className="border border-emerald-500/30 bg-slate-950/90 rounded-xl overflow-hidden shadow-lg shadow-emerald-950/10">
+            <div className="lg:col-span-4 flex flex-col h-fit border border-emerald-500/30 bg-slate-950/90 rounded-xl overflow-hidden shadow-lg shadow-emerald-950/10">
               {/* Window Header */}
               <div className="bg-slate-950 border-b border-emerald-500/20 px-4 py-2 flex items-center justify-between text-[11px]">
                 <div className="flex items-center space-x-2">
@@ -405,44 +413,56 @@ function MainApp() {
                   <span className="font-bold text-white uppercase tracking-wider">DODOOGE_SYSTEM_SHELL_TTY0</span>
                 </div>
                 <div className="flex items-center space-x-3 text-emerald-500/50">
-                  <span>ACTIVE_TTY</span>
+                  <span className="hidden xs:inline">ACTIVE_TTY</span>
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <button
+                    type="button"
+                    onClick={() => setTerminalCollapsed(!terminalCollapsed)}
+                    className="ml-1 px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 font-bold border border-emerald-500/25 transition-all cursor-pointer text-[9px] uppercase"
+                    title={terminalCollapsed ? "Expand Terminal" : "Collapse Terminal"}
+                  >
+                    {terminalCollapsed ? "[＋] EXPAND" : "[－] HIDE"}
+                  </button>
                 </div>
               </div>
 
-              {/* Logs Screen */}
-              <div className="p-4 h-48 overflow-y-auto space-y-1.5 border-b border-emerald-500/10 bg-slate-950 scrollbar">
-                {terminalLogs.map((log, idx) => (
-                  <div key={idx} className="text-xs flex items-start font-mono leading-relaxed">
-                    <span className="text-emerald-500/40 mr-2 shrink-0">&gt;&gt;</span>
-                    <span className={
-                      log.type === 'input' ? 'text-white font-bold' :
-                      log.type === 'error' ? 'text-red-400 font-bold' :
-                      log.type === 'success' ? 'text-emerald-300 font-bold' : 'text-emerald-500/85'
-                    }>
-                      {log.text}
-                    </span>
+              {!terminalCollapsed && (
+                <>
+                  {/* Logs Screen */}
+                  <div className="p-4 h-48 overflow-y-auto space-y-1.5 border-b border-emerald-500/10 bg-slate-950 scrollbar">
+                    {terminalLogs.map((log, idx) => (
+                      <div key={idx} className="text-xs flex items-start font-mono leading-relaxed">
+                        <span className="text-emerald-500/40 mr-2 shrink-0">&gt;&gt;</span>
+                        <span className={
+                          log.type === 'input' ? 'text-white font-bold' :
+                          log.type === 'error' ? 'text-red-400 font-bold' :
+                          log.type === 'success' ? 'text-emerald-300 font-bold' : 'text-emerald-500/85'
+                        }>
+                          {log.text}
+                        </span>
+                      </div>
+                    ))}
+                    <div ref={terminalEndRef} />
                   </div>
-                ))}
-                <div ref={terminalEndRef} />
-              </div>
 
-              {/* Command Prompt Form Input */}
-              <form onSubmit={handleCommandSubmit} className="flex items-center bg-slate-950 px-4 py-2 text-xs">
-                <CornerDownRight className="w-4 h-4 text-emerald-500 mr-2 shrink-0" />
-                <span className="text-emerald-500/60 font-bold mr-1.5 select-none">user@dodooge:~$</span>
-                <input
-                  type="text"
-                  placeholder="type instruction (e.g. help, clear, home, markets, earn)..."
-                  value={cmdInput}
-                  onChange={(e) => setCmdInput(e.target.value)}
-                  className="w-full bg-transparent text-white focus:outline-none placeholder-emerald-500/25 border-none select-all font-mono"
-                />
-              </form>
+                  {/* Command Prompt Form Input */}
+                  <form onSubmit={handleCommandSubmit} className="flex items-center bg-slate-950 px-4 py-2 text-xs">
+                    <CornerDownRight className="w-4 h-4 text-emerald-500 mr-2 shrink-0" />
+                    <span className="text-emerald-500/60 font-bold mr-1.5 select-none">user@dodooge:~$</span>
+                    <input
+                      type="text"
+                      placeholder="type instruction (e.g. help, clear, home, markets, earn)..."
+                      value={cmdInput}
+                      onChange={(e) => setCmdInput(e.target.value)}
+                      className="w-full bg-transparent text-white focus:outline-none placeholder-emerald-500/25 border-none select-all font-mono"
+                    />
+                  </form>
+                </>
+              )}
             </div>
 
             {/* Split Page Frame Window */}
-            <div className="border border-emerald-500/30 bg-slate-950/90 rounded-xl overflow-hidden shadow-lg shadow-emerald-950/10">
+            <div className="lg:col-span-8 border border-emerald-500/30 bg-slate-950/90 rounded-xl overflow-hidden shadow-lg shadow-emerald-950/10 self-start">
               <div className="bg-slate-950 border-b border-emerald-500/20 px-4 py-2 flex items-center justify-between text-[11px] uppercase text-emerald-500/50 font-bold">
                 <span>SYSTEM_WINDOW: /usr/local/bin/{currentTab}</span>
                 <span>COM_LINK_SECURE</span>
