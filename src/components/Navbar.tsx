@@ -1,12 +1,12 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
-import { Globe, LogOut, Wallet, User as UserIcon } from 'lucide-react';
+import { Globe, LogOut, Wallet, User as UserIcon, Trophy } from 'lucide-react';
 
 interface NavbarProps {
   onOpenAuth: (view: 'login' | 'register') => void;
-  currentTab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile';
-  setCurrentTab: (tab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile') => void;
+  currentTab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile' | 'referral';
+  setCurrentTab: (tab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile' | 'referral') => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurrentTab }) => {
@@ -88,6 +88,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, currentTab, setCurre
               >
                 <Wallet className="w-3.5 h-3.5" />
                 <span>${user.balance.toFixed(2)} USDT</span>
+              </button>
+
+              {/* Referral button - Hidden on mobile as it's in the bottom bar */}
+              <button
+                onClick={() => setCurrentTab('referral')}
+                className={`hidden sm:inline-block p-1.5 rounded hover:bg-slate-900/40 text-emerald-500/70 hover:text-emerald-400 transition-colors cursor-pointer ${
+                  currentTab === 'referral' ? 'bg-slate-900 text-amber-400 border border-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.2)]' : ''
+                }`}
+                title="Affiliate & Leaderboard"
+              >
+                <Trophy className="w-4 h-4" />
               </button>
 
               {/* Profile button - Hidden on mobile as it's in the bottom bar */}

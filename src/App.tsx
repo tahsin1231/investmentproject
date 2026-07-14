@@ -8,11 +8,12 @@ import { MarketsView } from './components/MarketsView';
 import { EarnView } from './components/EarnView';
 import { WalletView } from './components/WalletView';
 import { ProfileView } from './components/ProfileView';
+import { ReferralView } from './components/ReferralView';
 import { MiningBot } from './components/MiningBot';
 import { BottomNav } from './components/BottomNav';
 import { Footer } from './components/Footer';
 import { AdminPanel } from './components/AdminPanel';
-import { Terminal as TerminalIcon, CornerDownRight } from 'lucide-react';
+import { Terminal as TerminalIcon, CornerDownRight, Trophy } from 'lucide-react';
 
 interface TerminalLog {
   text: string;
@@ -21,7 +22,7 @@ interface TerminalLog {
 
 function MainApp() {
   const { user, activePlans, buyPlan, triggerMiningPayout, miningBalance, maintenanceMode } = useApp();
-  const [currentTab, setCurrentTab] = useState<'home' | 'markets' | 'earn' | 'wallet' | 'profile'>('home');
+  const [currentTab, setCurrentTab] = useState<'home' | 'markets' | 'earn' | 'wallet' | 'profile' | 'referral'>('home');
   const [authView, setAuthView] = useState<'login' | 'register' | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [isAdminStealth, setIsAdminStealth] = useState(false);
@@ -172,6 +173,7 @@ function MainApp() {
           { text: "  earn                     : Route to Auto AI Trading yield portal.", type: 'output' },
           { text: "  wallet                   : Route to personal USDT funding and transaction ledgers.", type: 'output' },
           { text: "  profile                  : Route to affiliate networking peer node.", type: 'output' },
+          { text: "  referral                 : Load affiliate system, verified list, and master leaderboard.", type: 'output' },
           { text: "  admin                    : Authenticate as Mainframe Admin.", type: 'output' },
           { text: "  clear                    : Reset active terminal screen buffer.", type: 'output' },
           { text: "  cat balance.txt          : Display available USDT ledger balance.", type: 'output' },
@@ -210,6 +212,12 @@ function MainApp() {
       case 'profile':
         setCurrentTab('profile');
         newLogs.push({ text: "SYS_ROUTE: Loaded Affiliate networking node.", type: 'success' });
+        break;
+
+      case 'referral':
+      case 'leaderboard':
+        setCurrentTab('referral');
+        newLogs.push({ text: "SYS_ROUTE: Loaded Affiliate system, verified lists, and master leaderboard.", type: 'success' });
         break;
 
       case 'clear':
@@ -445,6 +453,7 @@ function MainApp() {
                 {currentTab === 'earn' && <EarnView />}
                 {currentTab === 'wallet' && <WalletView />}
                 {currentTab === 'profile' && <ProfileView />}
+                {currentTab === 'referral' && <ReferralView />}
               </div>
             </div>
 

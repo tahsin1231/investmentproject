@@ -16,6 +16,10 @@ export interface User {
   isBanned?: boolean;
   banReason?: string;
   password?: string;
+  adminReferralBoost?: number;
+  allTimeReferrals?: number;
+  monthlyReferrals?: number;
+  referralVerified?: boolean;
 }
 
 export interface Plan {

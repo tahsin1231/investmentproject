@@ -1,11 +1,11 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
-import { Home, Terminal, Cpu, Wallet, User as UserIcon } from 'lucide-react';
+import { Home, Terminal, Cpu, Wallet, User as UserIcon, Trophy } from 'lucide-react';
 
 interface BottomNavProps {
-  currentTab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile';
-  setCurrentTab: (tab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile') => void;
+  currentTab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile' | 'referral';
+  setCurrentTab: (tab: 'home' | 'markets' | 'earn' | 'wallet' | 'profile' | 'referral') => void;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab }) => {
@@ -70,6 +70,20 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab 
           <span>{t.wallet.split(' ')[0]}</span>
           {currentTab === 'wallet' && (
             <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]" />
+          )}
+        </button>
+
+        {/* Referral Option */}
+        <button
+          onClick={() => setCurrentTab('referral')}
+          className={`flex flex-col items-center gap-1 uppercase font-mono tracking-normal xs:tracking-wider sm:tracking-widest text-[9px] xs:text-[10px] font-bold transition-all duration-200 relative px-1 xs:px-3 py-1 cursor-pointer ${
+            currentTab === 'referral' ? 'text-amber-400 scale-105' : 'text-emerald-500/40 hover:text-emerald-500/70'
+          }`}
+        >
+          <Trophy className={`w-5 h-5 transition-transform duration-200 ${currentTab === 'referral' ? 'stroke-[2.5px] drop-shadow-[0_0_6px_#f59e0b]' : ''}`} />
+          <span>Referral</span>
+          {currentTab === 'referral' && (
+            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_#f59e0b]" />
           )}
         </button>
 

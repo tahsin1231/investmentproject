@@ -24,6 +24,7 @@ import {
   increment
 } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from '../lib/firebase';
+import { checkAndVerifyUserReferralState } from '../utils/referral';
 
 interface AppContextType {
   user: User | null;
@@ -911,6 +912,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // 4. Process Referral Bonus
         if (user.referredBy) {
           await handleReferralRewardOnDeposit(user.id, user.email, user.referredBy, depositAmount, pendingTx.id);
+          // Also check and verify user referral status since they just made a completed deposit
+          checkAndVerifyUserReferralState(user.id, user.referredBy).catch(console.error);
         }
 
         return { success: true, message: `Deposit of $${depositAmount} USDT successfully verified and credited!`, amount: depositAmount };
@@ -1203,6 +1206,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         balance: finalBalance,
         activeInvestments: finalInvestments
       } : null);
+
+      // Verify referral status if user registered via a referral link
+      if (user.referredBy) {
+        checkAndVerifyUserReferralState(user.id, user.referredBy).catch(console.error);
+      }
 
       return { success: true };
     } catch (error) {

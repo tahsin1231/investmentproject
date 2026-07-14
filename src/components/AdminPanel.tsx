@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db, auth } from '../lib/firebase';
 import { User, ActivePlan, Transaction, Plan } from '../types';
 import { PLANS } from '../utils/data';
+import { checkAndVerifyUserReferralState } from '../utils/referral';
 import { 
   collection, 
   getDocs, 
@@ -147,6 +148,7 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
   const [editUserUsername, setEditUserUsername] = useState('');
   const [editUserPhone, setEditUserPhone] = useState('');
   const [editUserReferredBy, setEditUserReferredBy] = useState('');
+  const [editUserReferralBoost, setEditUserReferralBoost] = useState('');
   const [isSavingUserFields, setIsSavingUserFields] = useState(false);
 
   // Global referral commission rate state
@@ -795,6 +797,7 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
       setEditUserUsername(user.username || '');
       setEditUserPhone(user.phone || '');
       setEditUserReferredBy(user.referredBy || '');
+      setEditUserReferralBoost(String(user.adminReferralBoost ?? '0'));
     } catch (err) {
       console.error('Error loading subcollections:', err);
     }
@@ -818,7 +821,8 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         lastName: editUserLastName.trim(),
         username: editUserUsername.trim(),
         phone: editUserPhone.trim(),
-        referredBy: editUserReferredBy.trim() || null
+        referredBy: editUserReferredBy.trim() || null,
+        adminReferralBoost: parseInt(editUserReferralBoost) || 0
       };
 
       await updateDoc(userRef, updatedFields);
@@ -1014,6 +1018,12 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
       setSelectedUser(prev => prev ? { ...prev, activeInvestments: finalInvestments } : null);
 
       addAuditLog(`Activated Plan Contract [Level ${deployPlanId} - ${plan.name}]`, selectedUser.email);
+      
+      // Also check and verify user referral state since a plan has been deployed
+      if (selectedUser.referredBy) {
+        await checkAndVerifyUserReferralState(selectedUser.id, selectedUser.referredBy);
+      }
+
       alert(`Level ${deployPlanId} plan successfully activated for ${selectedUser.username}!`);
     } catch (err) {
       alert('Deployment failed: ' + err);
@@ -1123,6 +1133,8 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         // Process referral commission
         if (selectedUser.referredBy) {
           await handleReferralRewardOnDeposit(selectedUser.id, selectedUser.email, selectedUser.referredBy, tx.amount, tx.id);
+          // Check and verify user referral state since a deposit was approved
+          await checkAndVerifyUserReferralState(selectedUser.id, selectedUser.referredBy);
         }
         
         // Recalculate platform balance
@@ -1772,6 +1784,19 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
                             value={editUserReferredBy}
                             onChange={(e) => setEditUserReferredBy(e.target.value)}
                             className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-3 text-xs text-white font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[8px] text-amber-500 uppercase mb-1">Manual Referral Boost</label>
+                          <input
+                            type="number"
+                            placeholder="Boost leaderboard score (e.g. 50)"
+                            value={editUserReferralBoost}
+                            onChange={(e) => setEditUserReferralBoost(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500 rounded-lg py-1.5 px-3 text-xs text-amber-400 font-mono"
                           />
                         </div>
                       </div>
