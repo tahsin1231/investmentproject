@@ -46,6 +46,12 @@ export const MarketsView: React.FC = () => {
   const [currentCandle, setCurrentCandle] = useState<Candlestick | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(16); // default showing 16 visible bars
 
+  // Drag / Scroll states for historical candle panning
+  const [scrollOffset, setScrollOffset] = useState<number>(0);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [dragStartX, setDragStartX] = useState<number>(0);
+  const [dragStartOffset, setDragStartOffset] = useState<number>(0);
+
   // Trade form states
   const [tradeAmount, setTradeAmount] = useState<string>('50');
   const [tradeSide, setTradeSide] = useState<'buy' | 'sell'>('buy');
@@ -110,7 +116,7 @@ export const MarketsView: React.FC = () => {
     let prevClose = basePrice - 180;
     const nowTime = Math.floor(Date.now() / 60000);
 
-    for (let i = 39; i > 0; i--) {
+    for (let i = 149; i > 0; i--) {
       const timeStr = new Date((nowTime - i) * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const open = prevClose;
       const change = (Math.random() - 0.48) * 120;
@@ -184,11 +190,14 @@ export const MarketsView: React.FC = () => {
       // 1. Add current completed candle to history
       setCandles(prev => {
         const updated = [...prev, currentCandle];
-        if (updated.length > 50) {
+        if (updated.length > 500) {
           updated.shift(); // keep it clean
         }
         return updated;
       });
+
+      // If viewing history, keep the view offset locked
+      setScrollOffset(prev => prev > 0 ? prev + 1 : 0);
 
       // 2. Start a brand new candle
       const nowTime = Math.floor(Date.now() / 60000);
@@ -242,10 +251,12 @@ export const MarketsView: React.FC = () => {
     return list;
   }, [candles, currentCandle]);
 
-  // Sliced candle data based on zoomLevel (number of visible candles)
+  // Sliced candle data based on zoomLevel (number of visible candles) and scrollOffset (how far back we are scrolled)
   const displayedCandleData = useMemo(() => {
-    return candleData.slice(-zoomLevel);
-  }, [candleData, zoomLevel]);
+    const end = candleData.length - scrollOffset;
+    const start = Math.max(0, end - zoomLevel);
+    return candleData.slice(start, end);
+  }, [candleData, zoomLevel, scrollOffset]);
 
   // Compute min and max for scaling using only displayed candles
   const priceRange = useMemo(() => {
@@ -283,6 +294,56 @@ export const MarketsView: React.FC = () => {
     const calculated = (actualChartWidth / count) * 0.55;
     return Math.max(5, Math.min(32, calculated));
   }, [displayedCandleData, actualChartWidth]);
+
+  // Mouse & Touch Drag-to-Scroll Logic
+  const handleDragStart = (clientX: number) => {
+    setIsDragging(true);
+    setDragStartX(clientX);
+    setDragStartOffset(scrollOffset);
+  };
+
+  const handleDragMove = (clientX: number) => {
+    if (!isDragging) return;
+    const dx = clientX - dragStartX;
+    const candleSpanPixels = actualChartWidth / zoomLevel;
+    // Moving finger right (dx > 0) scrolls back in time (increases scrollOffset)
+    // Moving finger left (dx < 0) scrolls forward in time (decreases scrollOffset)
+    const rawOffset = dragStartOffset + (dx / candleSpanPixels);
+    const maxOffset = Math.max(0, candleData.length - zoomLevel);
+    setScrollOffset(Math.max(0, Math.min(maxOffset, Math.round(rawOffset))));
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    handleDragStart(e.clientX);
+  };
+
+  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    handleDragMove(e.clientX);
+  };
+
+  const onMouseUpOrLeave = () => {
+    handleDragEnd();
+  };
+
+  const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 1) {
+      handleDragStart(e.touches[0].clientX);
+    }
+  };
+
+  const onTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 1) {
+      handleDragMove(e.touches[0].clientX);
+    }
+  };
+
+  const onTouchEnd = () => {
+    handleDragEnd();
+  };
 
   // Preset Amount Buttons
   const setAmountPreset = (multiplier: number) => {
@@ -432,12 +493,17 @@ export const MarketsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Candle Chart Zoom Controls */}
+          {/* Candle Chart Zoom & Scroll Controls */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 border border-slate-900 rounded-xl p-3">
-            <div className="flex items-center space-x-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-mono text-slate-300 uppercase tracking-wider font-bold">
-                🔍 Candle Zoom: {zoomLevel} Bars shown
+            <div className="flex flex-col gap-1 w-full sm:w-auto">
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] font-mono text-slate-300 uppercase tracking-wider font-bold">
+                  🔍 Candle Zoom: {zoomLevel} Bars shown
+                </span>
+              </div>
+              <span className="text-[9px] text-slate-400 font-semibold flex items-center gap-1">
+                👋 হাত দিয়ে টেনে পিছনে/সামনে করুন (Swipe/Drag to Scroll)
               </span>
             </div>
             <div className="flex items-center space-x-2.5 w-full sm:w-auto justify-between sm:justify-end">
@@ -473,7 +539,10 @@ export const MarketsView: React.FC = () => {
               
               <button
                 type="button"
-                onClick={() => setZoomLevel(16)}
+                onClick={() => {
+                  setZoomLevel(16);
+                  setScrollOffset(0);
+                }}
                 className="px-2.5 h-8 rounded-lg bg-slate-950 hover:bg-slate-800 hover:text-white border border-slate-800 text-[9px] font-mono font-bold text-slate-400 flex items-center justify-center uppercase transition-all cursor-pointer select-none active:scale-95"
               >
                 Reset
@@ -481,8 +550,17 @@ export const MarketsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Canvas-style Candlestick SVG element */}
-          <div className="w-full relative bg-slate-950/80 border border-slate-900 rounded-xl p-2 h-[280px] overflow-hidden">
+          {/* Canvas-style Candlestick SVG element with interactive touch and mouse drag-to-scroll */}
+          <div 
+            className="w-full relative bg-slate-950/80 border border-slate-900 rounded-xl p-2 h-[280px] overflow-hidden select-none touch-none cursor-grab active:cursor-grabbing"
+            onMouseDown={onMouseDown}
+            onMouseMove={onMouseMove}
+            onMouseUp={onMouseUpOrLeave}
+            onMouseLeave={onMouseUpOrLeave}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
             {/* Grid line overlays for TradingView aesthetic */}
             <div className="absolute inset-0 grid grid-cols-5 grid-rows-4 pointer-events-none opacity-5">
               {Array.from({ length: 20 }).map((_, i) => (
@@ -490,8 +568,25 @@ export const MarketsView: React.FC = () => {
               ))}
             </div>
 
+            {/* Historical data warning indicator & snap back to live button */}
+            {scrollOffset > 0 && (
+              <div className="absolute top-3 left-3 bg-slate-950/95 border border-amber-500/35 rounded-lg px-2.5 py-1.5 flex items-center gap-2 shadow-2xl z-10 animate-fade-in">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-[9px] font-mono font-bold text-amber-400 uppercase tracking-wider">
+                  Viewing History ({scrollOffset}m ago)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setScrollOffset(0)}
+                  className="ml-1 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 px-2 py-0.5 rounded text-[8px] font-bold uppercase transition-all cursor-pointer pointer-events-auto"
+                >
+                  🟢 Go Live
+                </button>
+              </div>
+            )}
+
             {/* SVG Renderer */}
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-full overflow-visible">
+            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-full overflow-visible pointer-events-none">
               
               {/* Draw price horizontal helper line */}
               <line 
