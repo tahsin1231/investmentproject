@@ -154,7 +154,7 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
   // Global referral commission rate state
   const [referralCommissionRateInput, setReferralCommissionRateInput] = useState('20');
   const [referralCommFirstDepositInput, setReferralCommFirstDepositInput] = useState('20');
-  const [referralCommSubsequentDepositInput, setReferralCommSubsequentDepositInput] = useState('5');
+  const [referralCommSubsequentDepositInput, setReferralCommSubsequentDepositInput] = useState('20');
 
   // Monitor Auth Status on load
   useEffect(() => {
@@ -411,7 +411,7 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         setDailyWithdrawalLimitInput(String(data.dailyWithdrawalLimit ?? '1000.00'));
         setReferralCommissionRateInput(String(data.referralCommissionRate ?? '20'));
         setReferralCommFirstDepositInput(String(data.referralCommFirstDeposit ?? '20'));
-        setReferralCommSubsequentDepositInput(String(data.referralCommSubsequentDeposit ?? '5'));
+        setReferralCommSubsequentDepositInput(String(data.referralCommSubsequentDeposit ?? '20'));
         setWithdrawalsEnabled(data.withdrawalsEnabled !== false);
       }
     } catch (err) {
@@ -1077,7 +1077,7 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
           .filter(t => t.type === 'deposit' && t.status === 'completed' && t.id !== currentTxId);
 
         const isFirstDeposit = completedDeposits.length === 0;
-        const rate = isFirstDeposit ? parseFloat(referralCommFirstDepositInput) || 20 : parseFloat(referralCommSubsequentDepositInput) || 5;
+        const rate = isFirstDeposit ? parseFloat(referralCommFirstDepositInput) || 20 : parseFloat(referralCommSubsequentDepositInput) || 20;
         const commission = Number((depositAmount * (rate / 100)).toFixed(2));
 
         if (commission <= 0) return;
@@ -1209,7 +1209,7 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         dailyWithdrawalLimit: parseFloat(dailyWithdrawalLimitInput) || 1000.00,
         referralCommissionRate: parseFloat(referralCommissionRateInput) || 20,
         referralCommFirstDeposit: parseFloat(referralCommFirstDepositInput) || 20,
-        referralCommSubsequentDeposit: parseFloat(referralCommSubsequentDepositInput) || 5,
+        referralCommSubsequentDeposit: parseFloat(referralCommSubsequentDepositInput) || 20,
         withdrawalsEnabled: withdrawalsEnabled
       }, { merge: true });
 

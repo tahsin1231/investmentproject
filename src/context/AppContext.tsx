@@ -75,8 +75,8 @@ interface AppContextType {
   referralCommFirstDeposit: number;
   referralCommSubsequentDeposit: number;
   updateReferralCommRates: (first: number, subsequent: number) => Promise<void>;
-  placeOtcTrade: (amount: number, side: 'buy' | 'sell') => Promise<{ success: boolean; error?: string }>;
-  resolveOtcTrade: (roundId: number) => Promise<{ success: boolean; outcome?: 'buy' | 'sell'; won?: boolean; refund?: boolean }>;
+  placeOtcTrade: (amount: number, side: 'buy' | 'sell', durationSeconds?: number, entryPrice?: number) => Promise<{ success: boolean; error?: string; txId?: string }>;
+  resolveOtcTrade: (roundIdOrTradeId: string | number, isDurationTrade?: boolean, wonOverride?: boolean, finalPrice?: number) => Promise<{ success: boolean; outcome?: 'buy' | 'sell'; won?: boolean; refund?: boolean }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -100,7 +100,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [referralCommissionRate, setReferralCommissionRate] = useState<number>(20);
   const [withdrawalsEnabled, setWithdrawalsEnabled] = useState<boolean>(true);
   const [referralCommFirstDeposit, setReferralCommFirstDeposit] = useState<number>(20);
-  const [referralCommSubsequentDeposit, setReferralCommSubsequentDeposit] = useState<number>(5);
+  const [referralCommSubsequentDeposit, setReferralCommSubsequentDeposit] = useState<number>(20);
 
   // Mining simulation states
   const [miningActive, setMiningActive] = useState<boolean>(false);
@@ -195,7 +195,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setReferralCommissionRate(parseLimitValue(data.referralCommissionRate, 20));
         setWithdrawalsEnabled(data.withdrawalsEnabled !== false);
         setReferralCommFirstDeposit(parseLimitValue(data.referralCommFirstDeposit, 20));
-        setReferralCommSubsequentDeposit(parseLimitValue(data.referralCommSubsequentDeposit, 5));
+        setReferralCommSubsequentDeposit(parseLimitValue(data.referralCommSubsequentDeposit, 20));
       } else {
         // Create settings doc if it does not exist
         try {
@@ -210,7 +210,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             dailyWithdrawalLimit: 1000.00,
             referralCommissionRate: 20,
             referralCommFirstDeposit: 20,
-            referralCommSubsequentDeposit: 5
+            referralCommSubsequentDeposit: 20
           });
         } catch (e) {
           console.error('Failed to create global settings doc', e);
@@ -223,7 +223,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setDailyWithdrawalLimit(1000.00);
         setReferralCommissionRate(20);
         setReferralCommFirstDeposit(20);
-        setReferralCommSubsequentDeposit(5);
+        setReferralCommSubsequentDeposit(20);
         setWithdrawalsEnabled(true);
       }
     }, (err) => {
@@ -1281,7 +1281,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const placeOtcTrade = async (amount: number, side: 'buy' | 'sell'): Promise<{ success: boolean; error?: string }> => {
+  const placeOtcTrade = async (
+    amount: number,
+    side: 'buy' | 'sell',
+    durationSeconds?: number,
+    entryPrice?: number
+  ): Promise<{ success: boolean; error?: string; txId?: string }> => {
     if (!user) {
       return { success: false, error: 'User session not found. Please log in first.' };
     }
@@ -1307,7 +1312,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         amount: amount,
         status: 'pending',
         date: new Date().toLocaleString(),
-        txHash: `OTC TRADE (${side.toUpperCase()}) - Round #${roundId}`,
+        txHash: durationSeconds 
+          ? `OTC TRADE (${side.toUpperCase()}) - ${durationSeconds}s @ $${entryPrice}`
+          : `OTC TRADE (${side.toUpperCase()}) - Round #${roundId}`,
         timestamp: Date.now()
       };
       await setDoc(doc(db, 'users', user.id, 'transactions', txId), newTx);
@@ -1322,113 +1329,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         side: side,
         status: 'pending',
         createdAt: new Date().toISOString(),
-        referredBy: user.referredBy || null
+        referredBy: user.referredBy || null,
+        durationSeconds: durationSeconds || 60,
+        entryPrice: entryPrice || 0
       });
 
       // Update states
       setUser(prev => prev ? { ...prev, balance: newBalance } : null);
       setTransactions(prev => [newTx, ...prev]);
 
-      return { success: true };
+      return { success: true, txId };
     } catch (err: any) {
       console.error('Error placing OTC trade:', err);
       return { success: false, error: err.message || 'Failed to place trade.' };
     }
   };
 
-  const resolveOtcTrade = async (roundId: number): Promise<{ success: boolean; outcome?: 'buy' | 'sell'; won?: boolean; refund?: boolean }> => {
+  const resolveOtcTrade = async (
+    roundIdOrTradeId: string | number,
+    isDurationTrade: boolean = false,
+    wonOverride?: boolean,
+    finalPrice?: number
+  ): Promise<{ success: boolean; outcome?: 'buy' | 'sell'; won?: boolean; refund?: boolean }> => {
     if (!user) return { success: false };
 
     try {
-      const roundDocRef = doc(db, 'otc_rounds', String(roundId));
-      let winningSide: 'buy' | 'sell' = 'buy';
-      const roundSnap = await getDoc(roundDocRef);
-
-      if (roundSnap.exists()) {
-        winningSide = roundSnap.data().winningSide;
-      } else {
-        // Round does not exist, let's calculate and set it!
-        // Fetch all trades for this round
-        const tradesQuery = query(collection(db, 'otc_trades'), where('roundId', '==', roundId));
-        const snap = await getDocs(tradesQuery);
-        const roundTrades = snap.docs.map(d => d.data());
-
-        let totalBuy = 0;
-        let totalSell = 0;
-        const uniqueUserIds = new Set<string>();
-
-        roundTrades.forEach((t: any) => {
-          uniqueUserIds.add(t.userId);
-          if (t.side === 'buy') {
-            totalBuy += Number(t.amount);
-          } else if (t.side === 'sell') {
-            totalSell += Number(t.amount);
-          }
-        });
-
-        // Determine outcome:
-        // 1. If 2 or more unique users are trading in the current round, the side with larger volume loses and the side with smaller volume wins!
-        // 2. If only 1 user (or 0 users) traded, outcome is random (50% win/loss chance).
-        if (uniqueUserIds.size >= 2) {
-          if (totalBuy > totalSell) {
-            winningSide = 'sell'; // Sell (red) wins, Buy (green) has too much volume so it loses
-          } else if (totalSell > totalBuy) {
-            winningSide = 'buy'; // Buy (green) wins, Sell (red) has too much volume so it loses
-          } else {
-            winningSide = Math.random() < 0.5 ? 'buy' : 'sell';
-          }
-        } else {
-          winningSide = Math.random() < 0.5 ? 'buy' : 'sell';
-        }
-
-        // Save round doc
-        try {
-          await setDoc(roundDocRef, {
-            roundId: roundId,
-            winningSide: winningSide,
-            totalBuy,
-            totalSell,
-            uniqueUsersCount: uniqueUserIds.size,
-            status: 'resolved',
-            createdAt: new Date().toISOString()
-          });
-        } catch (setErr) {
-          // If collision happens, read existing
-          const collisionSnap = await getDoc(roundDocRef);
-          if (collisionSnap.exists()) {
-            winningSide = collisionSnap.data().winningSide;
-          }
-        }
-      }
-
-      // Now, find the user's pending trade for this round and resolve it!
-      const userTradeQuery = query(
-        collection(db, 'otc_trades'), 
-        where('roundId', '==', roundId), 
-        where('userId', '==', user.id),
-        where('status', '==', 'pending')
-      );
-      const userTradeSnap = await getDocs(userTradeQuery);
-      
-      if (userTradeSnap.empty) {
-        return { success: true, outcome: winningSide };
-      }
-
       let won = false;
       let refund = false;
       let finalBalance = user.balance;
+      let tradeId = '';
+      let tradeAmount = 0;
+      let tradeSide: 'buy' | 'sell' = 'buy';
+      let winningSide: 'buy' | 'sell' = 'buy';
+      let entryPrice = 0;
 
-      for (const tradeDoc of userTradeSnap.docs) {
-        const tradeData = tradeDoc.data();
-        const tradeSide = tradeData.side;
-        const tradeAmount = Number(tradeData.amount);
+      if (isDurationTrade) {
+        // Resolve a dynamic duration trade
+        tradeId = String(roundIdOrTradeId);
+        const tradeRef = doc(db, 'otc_trades', tradeId);
+        const tradeSnap = await getDoc(tradeRef);
+        if (!tradeSnap.exists()) {
+          return { success: false };
+        }
+        const tradeData = tradeSnap.data();
+        if (tradeData.status !== 'pending') {
+          return { success: true, won: tradeData.won, outcome: tradeData.winningSide };
+        }
+
+        tradeAmount = Number(tradeData.amount);
+        tradeSide = tradeData.side;
+        entryPrice = Number(tradeData.entryPrice || 0);
+        const exitPrice = finalPrice !== undefined ? finalPrice : entryPrice;
+
+        if (wonOverride !== undefined) {
+          won = wonOverride;
+        } else {
+          if (tradeSide === 'buy') {
+            won = exitPrice > entryPrice;
+          } else {
+            won = exitPrice < entryPrice;
+          }
+        }
+
+        winningSide = won ? tradeSide : (tradeSide === 'buy' ? 'sell' : 'buy');
 
         // Update trade status globally
-        await updateDoc(tradeDoc.ref, { status: 'completed', winningSide });
+        await updateDoc(tradeRef, { 
+          status: 'completed', 
+          winningSide, 
+          won, 
+          exitPrice 
+        });
 
-        if (tradeSide === winningSide) {
+        if (won) {
           // Win! User gets back 100% of their trade amount plus 50% profit (total 150%)
-          won = true;
           const payout = Number((tradeAmount * 1.5).toFixed(2));
           finalBalance = Number((finalBalance + payout).toFixed(2));
 
@@ -1436,13 +1410,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await updateDoc(doc(db, 'users', user.id), { balance: finalBalance });
 
           // Update transaction in user's subcollection
-          await setDoc(doc(db, 'users', user.id, 'transactions', tradeData.id), {
-            id: tradeData.id,
+          await setDoc(doc(db, 'users', user.id, 'transactions', tradeId), {
+            id: tradeId,
             type: 'trade',
             amount: tradeAmount,
             status: 'completed',
             date: new Date().toLocaleString(),
-            txHash: `OTC TRADE WIN (+50% Profit) - Round #${roundId}`,
+            txHash: `OTC TRADE WIN (+50% Profit) - ${tradeSide.toUpperCase()} @ $${entryPrice} (Exit: $${exitPrice})`,
             timestamp: Date.now()
           });
 
@@ -1454,7 +1428,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             amount: payout,
             status: 'completed',
             date: new Date().toLocaleString(),
-            txHash: `OTC Win payout (+150% return) for trade ${tradeData.id}`,
+            txHash: `OTC Win payout (+150% return) for trade ${tradeId}`,
             timestamp: Date.now()
           };
           await setDoc(doc(db, 'users', user.id, 'transactions', winTxId), winTx);
@@ -1472,13 +1446,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             await updateDoc(doc(db, 'users', user.id), { balance: finalBalance });
 
             // Update transaction
-            await setDoc(doc(db, 'users', user.id, 'transactions', tradeData.id), {
-              id: tradeData.id,
+            await setDoc(doc(db, 'users', user.id, 'transactions', tradeId), {
+              id: tradeId,
               type: 'trade',
               amount: tradeAmount,
               status: 'rejected', // lost
               date: new Date().toLocaleString(),
-              txHash: `OTC TRADE LOSS (50% Refund Applied) - Round #${roundId}`,
+              txHash: `OTC TRADE LOSS (50% Refund Applied) - ${tradeSide.toUpperCase()} @ $${entryPrice} (Exit: $${exitPrice})`,
               timestamp: Date.now()
             });
 
@@ -1490,21 +1464,169 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               amount: refundAmount,
               status: 'completed',
               date: new Date().toLocaleString(),
-              txHash: `Referral code refund (50%) for lost trade ${tradeData.id}`,
+              txHash: `Referral code refund (50%) for lost trade ${tradeId}`,
               timestamp: Date.now()
             };
             await setDoc(doc(db, 'users', user.id, 'transactions', refTxId), refundTx);
           } else {
             // No refund
-            await setDoc(doc(db, 'users', user.id, 'transactions', tradeData.id), {
-              id: tradeData.id,
+            await setDoc(doc(db, 'users', user.id, 'transactions', tradeId), {
+              id: tradeId,
               type: 'trade',
               amount: tradeAmount,
               status: 'rejected', // lost
               date: new Date().toLocaleString(),
-              txHash: `OTC TRADE LOSS (0% Refund) - Round #${roundId}`,
+              txHash: `OTC TRADE LOSS (0% Refund) - ${tradeSide.toUpperCase()} @ $${entryPrice} (Exit: $${exitPrice})`,
               timestamp: Date.now()
             });
+          }
+        }
+      } else {
+        // Old round-based resolution fallback
+        const roundId = Number(roundIdOrTradeId);
+        const roundDocRef = doc(db, 'otc_rounds', String(roundId));
+        winningSide = 'buy';
+        const roundSnap = await getDoc(roundDocRef);
+
+        if (roundSnap.exists()) {
+          winningSide = roundSnap.data().winningSide;
+        } else {
+          const tradesQuery = query(collection(db, 'otc_trades'), where('roundId', '==', roundId));
+          const snap = await getDocs(tradesQuery);
+          const roundTrades = snap.docs.map(d => d.data());
+
+          let totalBuy = 0;
+          let totalSell = 0;
+          const uniqueUserIds = new Set<string>();
+
+          roundTrades.forEach((t: any) => {
+            uniqueUserIds.add(t.userId);
+            if (t.side === 'buy') {
+              totalBuy += Number(t.amount);
+            } else if (t.side === 'sell') {
+              totalSell += Number(t.amount);
+            }
+          });
+
+          if (uniqueUserIds.size >= 2) {
+            if (totalBuy > totalSell) {
+              winningSide = 'sell';
+            } else if (totalSell > totalBuy) {
+              winningSide = 'buy';
+            } else {
+              winningSide = Math.random() < 0.5 ? 'buy' : 'sell';
+            }
+          } else {
+            winningSide = Math.random() < 0.5 ? 'buy' : 'sell';
+          }
+
+          try {
+            await setDoc(roundDocRef, {
+              roundId: roundId,
+              winningSide: winningSide,
+              totalBuy,
+              totalSell,
+              uniqueUsersCount: uniqueUserIds.size,
+              status: 'resolved',
+              createdAt: new Date().toISOString()
+            });
+          } catch (setErr) {
+            const collisionSnap = await getDoc(roundDocRef);
+            if (collisionSnap.exists()) {
+              winningSide = collisionSnap.data().winningSide;
+            }
+          }
+        }
+
+        const userTradeQuery = query(
+          collection(db, 'otc_trades'), 
+          where('roundId', '==', roundId), 
+          where('userId', '==', user.id),
+          where('status', '==', 'pending')
+        );
+        const userTradeSnap = await getDocs(userTradeQuery);
+        
+        if (userTradeSnap.empty) {
+          return { success: true, outcome: winningSide };
+        }
+
+        for (const tradeDoc of userTradeSnap.docs) {
+          const tradeData = tradeDoc.data();
+          const tSide = tradeData.side;
+          const tAmount = Number(tradeData.amount);
+          tradeId = tradeDoc.id;
+
+          await updateDoc(tradeDoc.ref, { status: 'completed', winningSide });
+
+          if (tSide === winningSide) {
+            won = true;
+            const payout = Number((tAmount * 1.5).toFixed(2));
+            finalBalance = Number((finalBalance + payout).toFixed(2));
+
+            await updateDoc(doc(db, 'users', user.id), { balance: finalBalance });
+
+            await setDoc(doc(db, 'users', user.id, 'transactions', tradeId), {
+              id: tradeId,
+              type: 'trade',
+              amount: tAmount,
+              status: 'completed',
+              date: new Date().toLocaleString(),
+              txHash: `OTC TRADE WIN (+50% Profit) - Round #${roundId}`,
+              timestamp: Date.now()
+            });
+
+            const winTxId = 'TRW-' + Math.floor(100000 + Math.random() * 900000);
+            const winTx: Transaction = {
+              id: winTxId,
+              type: 'trade_win',
+              amount: payout,
+              status: 'completed',
+              date: new Date().toLocaleString(),
+              txHash: `OTC Win payout (+150% return) for trade ${tradeId}`,
+              timestamp: Date.now()
+            };
+            await setDoc(doc(db, 'users', user.id, 'transactions', winTxId), winTx);
+          } else {
+            const isReferred = !!user.referredBy;
+            if (isReferred) {
+              refund = true;
+              const refundAmount = Number((tAmount * 0.5).toFixed(2));
+              finalBalance = Number((finalBalance + refundAmount).toFixed(2));
+
+              await updateDoc(doc(db, 'users', user.id), { balance: finalBalance });
+
+              await setDoc(doc(db, 'users', user.id, 'transactions', tradeId), {
+                id: tradeId,
+                type: 'trade',
+                amount: tAmount,
+                status: 'rejected',
+                date: new Date().toLocaleString(),
+                txHash: `OTC TRADE LOSS (50% Refund Applied) - Round #${roundId}`,
+                timestamp: Date.now()
+              });
+
+              const refTxId = 'TRR-' + Math.floor(100000 + Math.random() * 900000);
+              const refundTx: Transaction = {
+                id: refTxId,
+                type: 'trade_refund',
+                amount: refundAmount,
+                status: 'completed',
+                date: new Date().toLocaleString(),
+                txHash: `Referral code refund (50%) for lost trade ${tradeId}`,
+                timestamp: Date.now()
+              };
+              await setDoc(doc(db, 'users', user.id, 'transactions', refTxId), refundTx);
+            } else {
+              await setDoc(doc(db, 'users', user.id, 'transactions', tradeId), {
+                id: tradeId,
+                type: 'trade',
+                amount: tAmount,
+                status: 'rejected',
+                date: new Date().toLocaleString(),
+                txHash: `OTC TRADE LOSS (0% Refund) - Round #${roundId}`,
+                timestamp: Date.now()
+              });
+            }
           }
         }
       }

@@ -56,8 +56,26 @@ export const MarketsView: React.FC = () => {
   const [tradeAmount, setTradeAmount] = useState<string>('50');
   const [tradeSide, setTradeSide] = useState<'buy' | 'sell'>('buy');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [activeTrade, setActiveTrade] = useState<{ amount: number; side: 'buy' | 'sell'; roundId: number } | null>(null);
+  const [activeOtcTrade, setActiveOtcTrade] = useState<{
+    txId: string;
+    amount: number;
+    side: 'buy' | 'sell';
+    entryPrice: number;
+    durationSeconds: number;
+    secondsLeft: number;
+    startTime: number;
+    targetWon: boolean;
+  } | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState<number>(30); // Default: 30 seconds
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const durationOptions = [
+    { label: '10s', value: 10 },
+    { label: '30s', value: 30 },
+    { label: '1m', value: 60 },
+    { label: '2m', value: 120 },
+    { label: '5m', value: 300 },
+  ];
 
   // Settlement Status Display Modal
   const [settlementResult, setSettlementResult] = useState<{
@@ -145,7 +163,7 @@ export const MarketsView: React.FC = () => {
     });
   }, []);
 
-  // Sync Timer countdown and handle round rollover
+  // Sync Timer countdown and handle round rollover + dynamic OTC trade ticking
   useEffect(() => {
     const interval = setInterval(() => {
       const date = new Date();
@@ -162,8 +180,44 @@ export const MarketsView: React.FC = () => {
 
       // Small price fluctuation within the candle (fluctuates every second)
       if (currentCandle) {
-        const volatility = (Math.random() - 0.5) * 12; // fluctuation amount
-        const newPrice = Number((currentPrice + volatility).toFixed(2));
+        let volatility = (Math.random() - 0.5) * 12; // fluctuation amount
+        let newPrice = Number((currentPrice + volatility).toFixed(2));
+
+        // Ticking active dynamic OTC trade
+        let tradeFinished = false;
+
+        if (activeOtcTrade) {
+          const nextSecondsLeft = activeOtcTrade.secondsLeft - 1;
+          
+          if (nextSecondsLeft <= 0) {
+            tradeFinished = true;
+          } else {
+            // Nudge price in the last 3 seconds of the trade to align with targetWon outcome
+            if (nextSecondsLeft <= 3) {
+              const entry = activeOtcTrade.entryPrice;
+              const win = activeOtcTrade.targetWon;
+              const side = activeOtcTrade.side;
+
+              if (side === 'buy') {
+                if (win && newPrice <= entry) {
+                  newPrice = Number((entry + Math.random() * 4 + 1.2).toFixed(2));
+                } else if (!win && newPrice >= entry) {
+                  newPrice = Number((entry - (Math.random() * 4 + 1.2)).toFixed(2));
+                }
+              } else { // sell
+                if (win && newPrice >= entry) {
+                  newPrice = Number((entry - (Math.random() * 4 + 1.2)).toFixed(2));
+                } else if (!win && newPrice <= entry) {
+                  newPrice = Number((entry + Math.random() * 4 + 1.2).toFixed(2));
+                }
+              }
+            }
+
+            // Update active trade local seconds left
+            setActiveOtcTrade(prev => prev ? { ...prev, secondsLeft: nextSecondsLeft } : null);
+          }
+        }
+
         setCurrentPrice(newPrice);
 
         setCurrentCandle(prev => {
@@ -175,18 +229,51 @@ export const MarketsView: React.FC = () => {
             low: Math.min(prev.low, newPrice)
           };
         });
+
+        // Resolve finished trade
+        if (tradeFinished && activeOtcTrade) {
+          const finishTrade = async () => {
+            const finalP = newPrice;
+            const targetW = activeOtcTrade.targetWon;
+            const tId = activeOtcTrade.txId;
+            const amount = activeOtcTrade.amount;
+            const side = activeOtcTrade.side;
+
+            setActiveOtcTrade(null);
+            setIsSubmitting(true);
+            try {
+              const res = await resolveOtcTrade(tId, true, targetW, finalP);
+              if (res && res.success) {
+                setSettlementResult({
+                  roundId: 0,
+                  outcome: targetW ? side : (side === 'buy' ? 'sell' : 'buy'),
+                  won: targetW,
+                  refund: !targetW && !!user?.referredBy,
+                  amount: amount,
+                  show: true
+                });
+              }
+            } catch (err) {
+              console.error("Failed to settle dynamic trade", err);
+            } finally {
+              setIsSubmitting(false);
+            }
+          };
+
+          finishTrade();
+        }
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [currentPrice, currentCandle, currentRoundId]);
+  }, [currentPrice, currentCandle, currentRoundId, activeOtcTrade, user, resolveOtcTrade]);
 
-  // Watch round changes to commit previous candle and resolve previous round trades
+  // Watch round changes to commit previous candle and start a new one
   useEffect(() => {
     if (!currentCandle) return;
 
     // If we transition to a new round, commit the finished candle to history
-    const commitAndStartNewRound = async () => {
+    const commitAndStartNewRound = () => {
       // 1. Add current completed candle to history
       setCandles(prev => {
         const updated = [...prev, currentCandle];
@@ -209,29 +296,6 @@ export const MarketsView: React.FC = () => {
         low: currentPrice,
         close: currentPrice
       });
-
-      // 3. Auto-resolve the trade placed in the previous round
-      if (activeTrade && activeTrade.roundId === prevRoundId) {
-        setIsSubmitting(true);
-        try {
-          const res = await resolveOtcTrade(prevRoundId);
-          if (res && res.success) {
-            setSettlementResult({
-              roundId: prevRoundId,
-              outcome: res.outcome || 'buy',
-              won: !!res.won,
-              refund: !!res.refund,
-              amount: activeTrade.amount,
-              show: true
-            });
-            setActiveTrade(null); // Clear active trade
-          }
-        } catch (err) {
-          console.error("Auto-settle failure", err);
-        } finally {
-          setIsSubmitting(false);
-        }
-      }
     };
 
     commitAndStartNewRound();
@@ -380,19 +444,25 @@ export const MarketsView: React.FC = () => {
       return;
     }
 
-    if (activeTrade) {
-      setErrorMsg("You already have an active pending trade for this 1-minute round.");
+    if (activeOtcTrade) {
+      setErrorMsg("You already have an active pending trade. Please wait for it to expire.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const res = await placeOtcTrade(parsedAmount, tradeSide);
-      if (res.success) {
-        setActiveTrade({
+      const targetWonRoll = Math.random() < 0.5; // 50% chance of winning
+      const res = await placeOtcTrade(parsedAmount, tradeSide, selectedDuration, currentPrice);
+      if (res.success && res.txId) {
+        setActiveOtcTrade({
+          txId: res.txId,
           amount: parsedAmount,
           side: tradeSide,
-          roundId: currentRoundId
+          entryPrice: currentPrice,
+          durationSeconds: selectedDuration,
+          secondsLeft: selectedDuration,
+          startTime: Date.now(),
+          targetWon: targetWonRoll
         });
         setErrorMsg(null);
       } else {
@@ -503,7 +573,7 @@ export const MarketsView: React.FC = () => {
                 </span>
               </div>
               <span className="text-[9px] text-slate-400 font-semibold flex items-center gap-1">
-                👋 হাত দিয়ে টেনে পিছনে/সামনে করুন (Swipe/Drag to Scroll)
+                👋 Swipe/Drag to Scroll
               </span>
             </div>
             <div className="flex items-center space-x-2.5 w-full sm:w-auto justify-between sm:justify-end">
@@ -610,6 +680,49 @@ export const MarketsView: React.FC = () => {
                 ${currentPrice.toFixed(0)}
               </text>
 
+              {activeOtcTrade && (
+                <g>
+                  {/* Entry price horizontal dashed line */}
+                  <line 
+                    x1={0} 
+                    y1={scaleY(activeOtcTrade.entryPrice)} 
+                    x2={actualChartWidth} 
+                    y2={scaleY(activeOtcTrade.entryPrice)} 
+                    stroke="#f59e0b" 
+                    strokeDasharray="4,4" 
+                    strokeWidth={1.5}
+                    strokeOpacity={0.8} 
+                  />
+                  {/* Flashing entry price badge on the right scale */}
+                  <rect
+                    x={actualChartWidth + 3}
+                    y={scaleY(activeOtcTrade.entryPrice) - 6}
+                    width={50}
+                    height={12}
+                    fill="#f59e0b"
+                    rx={2}
+                  />
+                  <text 
+                    x={actualChartWidth + 6} 
+                    y={scaleY(activeOtcTrade.entryPrice) + 3} 
+                    fill="#0f172a" 
+                    fontSize={8} 
+                    fontWeight="black" 
+                    fontFamily="monospace"
+                  >
+                    ${activeOtcTrade.entryPrice.toFixed(0)}
+                  </text>
+                  {/* Flashing entry point circle */}
+                  <circle
+                    cx={getX(displayedCandleData.length - 1)}
+                    cy={scaleY(activeOtcTrade.entryPrice)}
+                    r={5}
+                    fill="#f59e0b"
+                    className="animate-ping"
+                  />
+                </g>
+              )}
+
               {/* Draw candlesticks */}
               {displayedCandleData.map((candle, idx) => {
                 const x = getX(idx);
@@ -715,35 +828,73 @@ export const MarketsView: React.FC = () => {
           </div>
 
           {/* Active Pending Trade Card */}
-          {activeTrade && (
-            <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 space-y-2.5">
+          {activeOtcTrade && (
+            <div className="bg-slate-900 border border-amber-500/30 rounded-xl p-4 space-y-3.5 shadow-xl animate-pulse">
               <div className="flex items-center justify-between text-[10px] uppercase font-mono font-bold">
                 <span className="text-amber-500 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
-                  PENDING ORDER ACTIVE
+                  LIVE CONTRACT TRADING ACTIVE
                 </span>
-                <span className="text-slate-400">Round #{activeTrade.roundId}</span>
+                <span className="text-slate-400 font-bold">{activeOtcTrade.secondsLeft}s LEFT</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-slate-950 p-2.5 rounded-lg border border-slate-900">
+              
+              <div className="grid grid-cols-3 gap-2 text-xs font-mono bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                 <div>
-                  <span className="text-[8px] text-slate-500 block">DIRECTION</span>
-                  <span className={`font-bold ${activeTrade.side === 'buy' ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {activeTrade.side === 'buy' ? '🟩 BUY (GREEN)' : '🟥 SELL (RED)'}
+                  <span className="text-[8px] text-slate-500 block">SIDE</span>
+                  <span className={`font-bold ${activeOtcTrade.side === 'buy' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {activeOtcTrade.side === 'buy' ? '🟩 BUY' : '🟥 SELL'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[8px] text-slate-500 block">AMOUNT SIZE</span>
-                  <span className="font-bold text-white">${activeTrade.amount.toFixed(2)} USDT</span>
+                  <span className="text-[8px] text-slate-500 block">ENTRY PRICE</span>
+                  <span className="font-bold text-white">${activeOtcTrade.entryPrice.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span className="text-[8px] text-slate-500 block">LIVE PRICE</span>
+                  <span className={`font-bold ${
+                    activeOtcTrade.side === 'buy'
+                      ? (currentPrice > activeOtcTrade.entryPrice ? 'text-emerald-400' : 'text-red-400')
+                      : (currentPrice < activeOtcTrade.entryPrice ? 'text-emerald-400' : 'text-red-400')
+                  }`}>
+                    ${currentPrice.toFixed(2)}
+                  </span>
                 </div>
               </div>
-              <p className="text-[9px] text-slate-400 uppercase leading-relaxed text-center mt-1">
-                ⌛ SETTLING AT NEXT MINUTE BOUNDARY (IN {timeLeft}s)
-              </p>
+
+              {/* Progress Bar indicator */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[8px] text-slate-500 font-mono">
+                  <span>EXPIRATION COUNTER:</span>
+                  <span className="text-white font-bold">{activeOtcTrade.secondsLeft}s / {activeOtcTrade.durationSeconds}s</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                  <div 
+                    style={{ width: `${(activeOtcTrade.secondsLeft / activeOtcTrade.durationSeconds) * 100}%` }}
+                    className="h-full bg-amber-500 transition-all duration-1000 ease-linear"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-slate-950/85 p-2 rounded border border-slate-800/60 text-center">
+                <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider block">
+                  CURRENT ESTIMATE:
+                </span>
+                <span className={`text-xs font-black font-mono tracking-widest ${
+                  activeOtcTrade.side === 'buy'
+                    ? (currentPrice > activeOtcTrade.entryPrice ? 'text-emerald-400' : 'text-red-400')
+                    : (currentPrice < activeOtcTrade.entryPrice ? 'text-emerald-400' : 'text-red-400')
+                }`}>
+                  {activeOtcTrade.side === 'buy'
+                    ? (currentPrice > activeOtcTrade.entryPrice ? '🟩 WINNING (IN THE MONEY)' : '🟥 LOSING (OUT OF THE MONEY)')
+                    : (currentPrice < activeOtcTrade.entryPrice ? '🟩 WINNING (IN THE MONEY)' : '🟥 LOSING (OUT OF THE MONEY)')
+                  }
+                </span>
+              </div>
             </div>
           )}
 
           {/* Order Side Toggle Selector */}
-          {!activeTrade && (
+          {!activeOtcTrade && (
             <div className="space-y-4">
               <div>
                 <label className="block text-[9px] text-slate-500 uppercase font-mono font-bold tracking-widest mb-1.5">
@@ -778,10 +929,33 @@ export const MarketsView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Expiration Selectors */}
+              <div>
+                <label className="block text-[9px] text-slate-500 uppercase font-mono font-bold tracking-widest mb-1.5">
+                  2. SELECT CONTRACT EXPIRATION TIME
+                </label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {durationOptions.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setSelectedDuration(opt.value)}
+                      className={`py-2 rounded-xl font-bold font-mono text-[10px] uppercase tracking-wider transition-all border cursor-pointer ${
+                        selectedDuration === opt.value
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/10'
+                          : 'bg-slate-950 border-slate-900 text-slate-400 hover:border-slate-800'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Amount Size Inputs */}
               <div>
                 <label className="block text-[9px] text-slate-500 uppercase font-mono font-bold tracking-widest mb-1.5">
-                  2. SPECIFY TRANSACTION AMOUNT (USDT)
+                  3. SPECIFY TRANSACTION AMOUNT (USDT)
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -966,13 +1140,13 @@ export const MarketsView: React.FC = () => {
 
             <div className="space-y-1.5">
               <span className="font-mono text-[9px] text-slate-500 uppercase tracking-widest block font-bold">
-                Round #{settlementResult.roundId} Settle Completed
+                {settlementResult.roundId > 0 ? `Round #${settlementResult.roundId}` : 'OTC Dynamic Contract'} Settle Completed
               </span>
               <h3 className="text-xl font-black text-white uppercase tracking-tight">
                 {settlementResult.won ? '🎉 EXCEL_WINNER' : '❌ CONTRACT_EXPIRED'}
               </h3>
               <p className="text-xs text-slate-400 uppercase font-mono">
-                Winning Market Candle: <span className={settlementResult.outcome === 'buy' ? 'text-emerald-400' : 'text-red-400'}>{settlementResult.outcome === 'buy' ? '🟩 BUY (GREEN)' : '🟥 SELL (RED)'}</span>
+                Outcome: <span className={settlementResult.outcome === 'buy' ? 'text-emerald-400' : 'text-red-400'}>{settlementResult.outcome === 'buy' ? '🟩 BUY (GREEN)' : '🟥 SELL (RED)'}</span>
               </p>
             </div>
 
