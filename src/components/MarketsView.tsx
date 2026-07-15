@@ -30,6 +30,67 @@ interface Candlestick {
   timestamp?: number;
 }
 
+// Seedable random number generator based on a simple LCG
+function seedRandom(seed: number) {
+  const m = 0x80000000; // 2**31
+  const a = 1103515245;
+  const c = 12345;
+  let state = seed ? seed : 123456789;
+  return function() {
+    state = (a * state + c) % m;
+    return state / (m - 1);
+  };
+}
+
+// Deterministic price based on minute timestamp
+function getPriceAtMinute(minute: number): number {
+  const base = 64250.00;
+  // Slowly varying waves
+  const wave1 = 450 * Math.sin(minute / 60); // 1-hour cycle
+  const wave2 = 1200 * Math.sin(minute / 720); // 12-hour cycle
+  const wave3 = 180 * Math.sin(minute / 15); // 15-minute cycle
+  const wave4 = 80 * Math.sin(minute / 5); // 5-minute cycle
+  
+  // Deterministic noise based on the minute seed
+  const rand = seedRandom(minute);
+  const noise = (rand() - 0.5) * 60;
+  
+  return Number((base + wave1 + wave2 + wave3 + wave4 + noise).toFixed(2));
+}
+
+// Deterministic candle for a minute
+function getDeterministicCandleForMinute(minute: number): Candlestick {
+  const rand = seedRandom(minute);
+  const open = getPriceAtMinute(minute - 1);
+  const close = getPriceAtMinute(minute);
+  const high = Math.max(open, close) + rand() * 35;
+  const low = Math.min(open, close) - rand() * 35;
+  
+  const timeStr = new Date(minute * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return {
+    time: timeStr,
+    open: Number(open.toFixed(2)),
+    high: Number(high.toFixed(2)),
+    low: Number(low.toFixed(2)),
+    close: Number(close.toFixed(2)),
+    timestamp: minute
+  };
+}
+
+// Deterministic price at a specific second
+function getDeterministicPriceAtSecond(minute: number, sec: number, open: number): number {
+  const close = getPriceAtMinute(minute);
+  // Interpolate between open and close
+  const progress = sec / 60;
+  const interpolated = open + (close - open) * progress;
+  
+  // Deterministic noise
+  const randSec = seedRandom(minute * 100 + sec);
+  const noise = (randSec() - 0.5) * 15;
+  
+  return Number((interpolated + noise).toFixed(2));
+}
+
 export const MarketsView: React.FC = () => {
   const { user, placeOtcTrade, resolveOtcTrade, language } = useApp();
   const t = translations[language];
@@ -59,7 +120,7 @@ export const MarketsView: React.FC = () => {
   const [tradeAmount, setTradeAmount] = useState<string>('50');
   const [tradeSide, setTradeSide] = useState<'buy' | 'sell'>('buy');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [activeOtcTrade, setActiveOtcTrade] = useState<{
+  const [activeOtcTrades, setActiveOtcTrades] = useState<{
     txId: string;
     amount: number;
     side: 'buy' | 'sell';
@@ -68,16 +129,18 @@ export const MarketsView: React.FC = () => {
     secondsLeft: number;
     startTime: number;
     targetWon: boolean;
-  } | null>(null);
+  }[]>([]);
   const [selectedDuration, setSelectedDuration] = useState<number>(30); // Default: 30 seconds
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Refs to avoid tearing down/lagging intervals on fast state changes
   const currentPriceRef = useRef<number>(basePrice);
   const currentCandleRef = useRef<Candlestick | null>(null);
-  const activeOtcTradeRef = useRef<any>(null);
+  const activeOtcTradesRef = useRef<any[]>([]);
   const currentRoundIdRef = useRef<number>(Math.floor(Date.now() / 60000));
   const userRef = useRef<any>(null);
+  const resolveOtcTradeRef = useRef<any>(resolveOtcTrade);
+  const placeOtcTradeRef = useRef<any>(placeOtcTrade);
 
   // Sync refs with state
   useEffect(() => {
@@ -89,8 +152,8 @@ export const MarketsView: React.FC = () => {
   }, [currentCandle]);
 
   useEffect(() => {
-    activeOtcTradeRef.current = activeOtcTrade;
-  }, [activeOtcTrade]);
+    activeOtcTradesRef.current = activeOtcTrades;
+  }, [activeOtcTrades]);
 
   useEffect(() => {
     currentRoundIdRef.current = currentRoundId;
@@ -99,6 +162,14 @@ export const MarketsView: React.FC = () => {
   useEffect(() => {
     userRef.current = user;
   }, [user]);
+
+  useEffect(() => {
+    resolveOtcTradeRef.current = resolveOtcTrade;
+  }, [resolveOtcTrade]);
+
+  useEffect(() => {
+    placeOtcTradeRef.current = placeOtcTrade;
+  }, [placeOtcTrade]);
 
   const durationOptions = [
     { label: '10s', value: 10 },
@@ -159,104 +230,41 @@ export const MarketsView: React.FC = () => {
     };
   }, [user, currentRoundId]);
 
-  // Load or generate historical candles with local caching and missing minutes catch-up
+  // Load or generate historical candles with deterministic values
   useEffect(() => {
     const nowTime = Math.floor(Date.now() / 60000);
-    let loadedCandles: Candlestick[] = [];
-    let prevClose = basePrice - 180;
+    const loadedCandles: Candlestick[] = [];
 
-    try {
-      const cached = localStorage.getItem('dodooge_candles_v1');
-      if (cached) {
-        const parsed = JSON.parse(cached) as Candlestick[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          loadedCandles = parsed;
-        }
-      }
-    } catch (e) {
-      console.error("Failed to parse cached candles:", e);
-    }
-
-    if (loadedCandles.length > 0) {
-      const lastCandle = loadedCandles[loadedCandles.length - 1];
-      const lastTimestamp = lastCandle.timestamp || (nowTime - 1);
-      
-      // Catch up on any missing candles since the last load
-      if (lastTimestamp < nowTime) {
-        const missingMinutes = nowTime - lastTimestamp;
-        if (missingMinutes < 200) {
-          let lastClose = lastCandle.close;
-          for (let i = 1; i < missingMinutes; i++) {
-            const currentMin = lastTimestamp + i;
-            const timeStr = new Date(currentMin * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const open = lastClose;
-            const change = (Math.random() - 0.48) * 120;
-            const close = open + change;
-            const high = Math.max(open, close) + Math.random() * 40;
-            const low = Math.min(open, close) - Math.random() * 40;
-
-            loadedCandles.push({
-              time: timeStr,
-              open,
-              high,
-              low,
-              close,
-              timestamp: currentMin
-            });
-            lastClose = close;
-          }
-          if (loadedCandles.length > 500) {
-            loadedCandles = loadedCandles.slice(loadedCandles.length - 500);
-          }
-          prevClose = lastClose;
-        } else {
-          loadedCandles = [];
-        }
-      } else {
-        prevClose = lastCandle.close;
-      }
-    }
-
-    if (loadedCandles.length === 0) {
-      let currentPrevClose = basePrice - 180;
-      for (let i = 149; i > 0; i--) {
-        const currentMin = nowTime - i;
-        const timeStr = new Date(currentMin * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const open = currentPrevClose;
-        const change = (Math.random() - 0.48) * 120;
-        const close = open + change;
-        const high = Math.max(open, close) + Math.random() * 40;
-        const low = Math.min(open, close) - Math.random() * 40;
-
-        loadedCandles.push({
-          time: timeStr,
-          open,
-          high,
-          low,
-          close,
-          timestamp: currentMin
-        });
-        currentPrevClose = close;
-      }
-      prevClose = currentPrevClose;
-    }
-
-    try {
-      localStorage.setItem('dodooge_candles_v1', JSON.stringify(loadedCandles));
-    } catch (e) {
-      console.error("Failed to save candles to storage:", e);
+    // Always generate exactly 150 deterministic candles ending at the previous minute
+    for (let i = 150; i > 0; i--) {
+      const targetMinute = nowTime - i;
+      loadedCandles.push(getDeterministicCandleForMinute(targetMinute));
     }
 
     setCandles(loadedCandles);
+    
+    const prevClose = loadedCandles[loadedCandles.length - 1].close;
     setCurrentPrice(prevClose);
     currentPriceRef.current = prevClose;
     
+    // Build initial candle for the current minute up to the current second
+    const date = new Date();
+    const sec = date.getSeconds();
+    const prices: number[] = [];
+    for (let s = 0; s <= sec; s++) {
+      prices.push(getDeterministicPriceAtSecond(nowTime, s, prevClose));
+    }
+    const currentLivePrice = prices[prices.length - 1];
+    const high = Math.max(...prices, prevClose);
+    const low = Math.min(...prices, prevClose);
+    const timeStr = new Date(nowTime * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     const initialCandleObj = {
-      time: new Date(nowTime * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      open: prevClose,
-      high: prevClose,
-      low: prevClose,
-      close: prevClose,
+      time: timeStr,
+      open: Number(prevClose.toFixed(2)),
+      high: Number(high.toFixed(2)),
+      low: Number(low.toFixed(2)),
+      close: Number(currentLivePrice.toFixed(2)),
       timestamp: nowTime
     };
     setCurrentCandle(initialCandleObj);
@@ -265,28 +273,27 @@ export const MarketsView: React.FC = () => {
 
   // Sync active trades on mount (both local storage and cloud Firestore)
   useEffect(() => {
-    const cachedTrade = localStorage.getItem('dodooge_active_otc_trade');
-    if (cachedTrade) {
+    const cachedTrades = localStorage.getItem('dodooge_active_otc_trades');
+    let loadedTrades: any[] = [];
+    if (cachedTrades) {
       try {
-        const parsed = JSON.parse(cachedTrade);
-        const elapsedSeconds = Math.floor((Date.now() - parsed.startTime) / 1000);
-        const remaining = parsed.durationSeconds - elapsedSeconds;
-        if (remaining > 0) {
-          const tradeData = {
-            ...parsed,
-            secondsLeft: remaining
-          };
-          setActiveOtcTrade(tradeData);
-          activeOtcTradeRef.current = tradeData;
-        } else {
-          localStorage.removeItem('dodooge_active_otc_trade');
+        const parsed = JSON.parse(cachedTrades);
+        if (Array.isArray(parsed)) {
+          loadedTrades = parsed.map(trade => {
+            const elapsedSeconds = Math.floor((Date.now() - trade.startTime) / 1000);
+            const remaining = trade.durationSeconds - elapsedSeconds;
+            return {
+              ...trade,
+              secondsLeft: remaining
+            };
+          }).filter(trade => trade.secondsLeft > 0);
         }
       } catch (e) {
-        console.error("Failed to parse cached trade:", e);
+        console.error("Failed to parse cached trades:", e);
       }
     }
 
-    const syncFirestoreTrade = async () => {
+    const syncFirestoreTrades = async () => {
       if (!user) return;
       try {
         const q = query(
@@ -296,55 +303,68 @@ export const MarketsView: React.FC = () => {
         );
         const querySnap = await getDocs(q);
         if (!querySnap.empty) {
-          const docsSorted = querySnap.docs.map(doc => {
+          const fetchedTrades = querySnap.docs.map(doc => {
             const data = doc.data();
+            const startTime = data.startTime || new Date(data.createdAt).getTime();
+            const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+            const remaining = Number(data.durationSeconds) - elapsedSeconds;
             return {
-              txId: data.id,
-              amount: data.amount,
-              side: data.side,
-              entryPrice: data.entryPrice,
-              durationSeconds: data.durationSeconds,
-              startTime: data.startTime || new Date(data.createdAt).getTime(),
+              txId: doc.id,
+              amount: Number(data.amount),
+              side: data.side as 'buy' | 'sell',
+              entryPrice: Number(data.entryPrice),
+              durationSeconds: Number(data.durationSeconds),
+              secondsLeft: remaining,
+              startTime: startTime,
               targetWon: data.targetWon ?? (Math.random() < 0.5)
             };
-          }).sort((a, b) => b.startTime - a.startTime);
+          });
 
-          const latestTrade = docsSorted[0];
-          const elapsedSeconds = Math.floor((Date.now() - latestTrade.startTime) / 1000);
-          const remaining = latestTrade.durationSeconds - elapsedSeconds;
-
-          if (remaining > 0) {
-            const activeTradeData = {
-              txId: latestTrade.txId,
-              amount: latestTrade.amount,
-              side: latestTrade.side as 'buy' | 'sell',
-              entryPrice: latestTrade.entryPrice,
-              durationSeconds: latestTrade.durationSeconds,
-              secondsLeft: remaining,
-              startTime: latestTrade.startTime,
-              targetWon: latestTrade.targetWon
-            };
-            setActiveOtcTrade(activeTradeData);
-            activeOtcTradeRef.current = activeTradeData;
-            localStorage.setItem('dodooge_active_otc_trade', JSON.stringify(activeTradeData));
-          } else {
-            try {
-              const currentP = currentPriceRef.current;
-              await resolveOtcTrade(latestTrade.txId, true, latestTrade.targetWon, currentP);
-            } catch (err) {
-              console.error("Failed to resolve stale trade on mount:", err);
+          // Resolve stale trades (secondsLeft <= 0) and filter active ones
+          const activeFetched: any[] = [];
+          for (const trade of fetchedTrades) {
+            if (trade.secondsLeft > 0) {
+              activeFetched.push(trade);
+            } else {
+              try {
+                const currentP = currentPriceRef.current;
+                await resolveOtcTradeRef.current(trade.txId, true, trade.targetWon, currentP);
+              } catch (err) {
+                console.error("Failed to resolve stale trade on mount:", err);
+              }
             }
           }
+
+          // Combine with loadedTrades, keeping unique txId
+          const combined = [...loadedTrades];
+          for (const f of activeFetched) {
+            if (!combined.some(t => t.txId === f.txId)) {
+              combined.push(f);
+            }
+          }
+
+          setActiveOtcTrades(combined);
+          activeOtcTradesRef.current = combined;
+          localStorage.setItem('dodooge_active_otc_trades', JSON.stringify(combined));
+        } else {
+          setActiveOtcTrades(loadedTrades);
+          activeOtcTradesRef.current = loadedTrades;
+          localStorage.setItem('dodooge_active_otc_trades', JSON.stringify(loadedTrades));
         }
       } catch (err) {
-        console.error("Failed to fetch pending trade from Firestore on mount:", err);
+        console.error("Failed to fetch pending trades from Firestore on mount:", err);
+        setActiveOtcTrades(loadedTrades);
+        activeOtcTradesRef.current = loadedTrades;
       }
     };
 
     if (user) {
-      syncFirestoreTrade();
+      syncFirestoreTrades();
+    } else {
+      setActiveOtcTrades(loadedTrades);
+      activeOtcTradesRef.current = loadedTrades;
     }
-  }, [user, resolveOtcTrade]);
+  }, [user]);
 
   // Streamlined, lag-free ticker interval for real-time price fluctuations, round transitions, and trade expirations
   useEffect(() => {
@@ -356,34 +376,14 @@ export const MarketsView: React.FC = () => {
 
       const round = Math.floor(Date.now() / 60000);
       if (round !== currentRoundIdRef.current) {
-        const completedCandle = currentCandleRef.current;
-        if (completedCandle) {
-          setCandles(prev => {
-            const updated = [...prev, completedCandle];
-            const trimmed = updated.length > 500 ? updated.slice(updated.length - 500) : updated;
-            try {
-              localStorage.setItem('dodooge_candles_v1', JSON.stringify(trimmed));
-            } catch (e) {
-              console.error("Failed to save candles to storage:", e);
-            }
-            return trimmed;
-          });
+        // When round changes, the completed candle is just the deterministic candle of the completed minute!
+        const completedCandle = getDeterministicCandleForMinute(currentRoundIdRef.current);
+        setCandles(prev => {
+          const updated = [...prev, completedCandle];
+          return updated.length > 500 ? updated.slice(updated.length - 500) : updated;
+        });
 
-          setScrollOffset(prev => prev > 0 ? prev + 1 : 0);
-
-          const priceVal = currentPriceRef.current;
-          const nextTimeStr = new Date(round * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const newCandle = {
-            time: nextTimeStr,
-            open: priceVal,
-            high: priceVal,
-            low: priceVal,
-            close: priceVal,
-            timestamp: round
-          };
-          setCurrentCandle(newCandle);
-          currentCandleRef.current = newCandle;
-        }
+        setScrollOffset(prev => prev > 0 ? prev + 1 : 0);
 
         setPrevRoundId(currentRoundIdRef.current);
         setCurrentRoundId(round);
@@ -392,22 +392,26 @@ export const MarketsView: React.FC = () => {
 
       const currentCandleVal = currentCandleRef.current;
       if (currentCandleVal) {
-        let volatility = (Math.random() - 0.5) * 12;
-        let newPrice = Number((currentPriceRef.current + volatility).toFixed(2));
+        // Now, let's calculate the deterministic price for the current second
+        const nowTime = Math.floor(Date.now() / 60000);
+        const prevClose = getPriceAtMinute(nowTime - 1);
+        let newPrice = getDeterministicPriceAtSecond(nowTime, sec, prevClose);
 
-        let tradeFinished = false;
-        const activeTrade = activeOtcTradeRef.current;
+        // Ticking active dynamic OTC trades
+        const activeTrades = [...activeOtcTradesRef.current];
+        const updatedTrades: any[] = [];
+        const finishedTrades: any[] = [];
 
-        if (activeTrade) {
-          const nextSecondsLeft = activeTrade.secondsLeft - 1;
-          
+        for (const trade of activeTrades) {
+          const nextSecondsLeft = trade.secondsLeft - 1;
           if (nextSecondsLeft <= 0) {
-            tradeFinished = true;
+            finishedTrades.push(trade);
           } else {
+            // Nudge price for the current user if this trade is within its final 3 seconds
             if (nextSecondsLeft <= 3) {
-              const entry = activeTrade.entryPrice;
-              const win = activeTrade.targetWon;
-              const side = activeTrade.side;
+              const entry = trade.entryPrice;
+              const win = trade.targetWon;
+              const side = trade.side;
 
               if (side === 'buy') {
                 if (win && newPrice <= entry) {
@@ -424,40 +428,56 @@ export const MarketsView: React.FC = () => {
               }
             }
 
-            const updatedTrade = { ...activeTrade, secondsLeft: nextSecondsLeft };
-            setActiveOtcTrade(updatedTrade);
-            activeOtcTradeRef.current = updatedTrade;
-            localStorage.setItem('dodooge_active_otc_trade', JSON.stringify(updatedTrade));
+            updatedTrades.push({
+              ...trade,
+              secondsLeft: nextSecondsLeft
+            });
           }
         }
+
+        // Update active trades in state/ref and local storage
+        setActiveOtcTrades(updatedTrades);
+        activeOtcTradesRef.current = updatedTrades;
+        localStorage.setItem('dodooge_active_otc_trades', JSON.stringify(updatedTrades));
 
         setCurrentPrice(newPrice);
         currentPriceRef.current = newPrice;
 
+        // Generate updated candle based on deterministic prices from second 0 up to current second,
+        // and using the active trade nudged price for the current second
+        const prices: number[] = [];
+        for (let s = 0; s < sec; s++) {
+          prices.push(getDeterministicPriceAtSecond(nowTime, s, prevClose));
+        }
+        prices.push(newPrice); // Current second price which may be nudged
+
+        const high = Math.max(...prices, prevClose);
+        const low = Math.min(...prices, prevClose);
+        const timeStr = new Date(nowTime * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
         const updatedCandle = {
-          ...currentCandleVal,
-          close: newPrice,
-          high: Math.max(currentCandleVal.high, newPrice),
-          low: Math.min(currentCandleVal.low, newPrice)
+          time: timeStr,
+          open: Number(prevClose.toFixed(2)),
+          high: Number(high.toFixed(2)),
+          low: Number(low.toFixed(2)),
+          close: Number(newPrice.toFixed(2)),
+          timestamp: nowTime
         };
         setCurrentCandle(updatedCandle);
         currentCandleRef.current = updatedCandle;
 
-        if (tradeFinished && activeTrade) {
-          const finishTrade = async () => {
-            const finalP = newPrice;
-            const targetW = activeTrade.targetWon;
-            const tId = activeTrade.txId;
-            const amount = activeTrade.amount;
-            const side = activeTrade.side;
-
-            setActiveOtcTrade(null);
-            activeOtcTradeRef.current = null;
-            localStorage.removeItem('dodooge_active_otc_trade');
+        // Resolve any finished trades
+        if (finishedTrades.length > 0) {
+          const finalP = newPrice;
+          finishedTrades.forEach(async (trade) => {
+            const targetW = trade.targetWon;
+            const tId = trade.txId;
+            const amount = trade.amount;
+            const side = trade.side;
 
             setIsSubmitting(true);
             try {
-              const res = await resolveOtcTrade(tId, true, targetW, finalP);
+              const res = await resolveOtcTradeRef.current(tId, true, targetW, finalP);
               if (res && res.success) {
                 setSettlementResult({
                   roundId: 0,
@@ -469,19 +489,17 @@ export const MarketsView: React.FC = () => {
                 });
               }
             } catch (err) {
-              console.error("Failed to settle dynamic trade", err);
+              console.error("Failed to resolve dynamic OTC trade:", err);
             } finally {
               setIsSubmitting(false);
             }
-          };
-
-          finishTrade();
+          });
         }
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [resolveOtcTrade]);
+  }, []);
 
   // Render SVG Candlestick Chart
   const chartHeight = 260;
@@ -616,18 +634,13 @@ export const MarketsView: React.FC = () => {
       return;
     }
 
-    if (parsedAmount < 1) {
-      setErrorMsg("Minimum required trade size is $1.00 USDT.");
+    if (parsedAmount < 0.1) {
+      setErrorMsg("Minimum required trade size is $0.10 USDT.");
       return;
     }
 
     if (user.balance < parsedAmount) {
       setErrorMsg("Insufficient funds in trading account. Please deposit.");
-      return;
-    }
-
-    if (activeOtcTrade) {
-      setErrorMsg("You already have an active pending trade. Please wait for it to expire.");
       return;
     }
 
@@ -645,9 +658,10 @@ export const MarketsView: React.FC = () => {
           startTime: res.startTime || Date.now(),
           targetWon: res.targetWon !== undefined ? res.targetWon : (Math.random() < 0.5)
         };
-        setActiveOtcTrade(nextTrade);
-        activeOtcTradeRef.current = nextTrade;
-        localStorage.setItem('dodooge_active_otc_trade', JSON.stringify(nextTrade));
+        const updated = [...activeOtcTrades, nextTrade];
+        setActiveOtcTrades(updated);
+        activeOtcTradesRef.current = updated;
+        localStorage.setItem('dodooge_active_otc_trades', JSON.stringify(updated));
         setErrorMsg(null);
       } else {
         setErrorMsg(res.error || "Failed to submit order to OTC pool.");
@@ -864,48 +878,51 @@ export const MarketsView: React.FC = () => {
                 ${currentPrice.toFixed(0)}
               </text>
 
-              {activeOtcTrade && (
-                <g>
-                  {/* Entry price horizontal dashed line */}
-                  <line 
-                    x1={0} 
-                    y1={scaleY(activeOtcTrade.entryPrice)} 
-                    x2={actualChartWidth} 
-                    y2={scaleY(activeOtcTrade.entryPrice)} 
-                    stroke="#f59e0b" 
-                    strokeDasharray="4,4" 
-                    strokeWidth={1.5}
-                    strokeOpacity={0.8} 
-                  />
-                  {/* Flashing entry price badge on the right scale */}
-                  <rect
-                    x={actualChartWidth + 3}
-                    y={scaleY(activeOtcTrade.entryPrice) - 6}
-                    width={50}
-                    height={12}
-                    fill="#f59e0b"
-                    rx={2}
-                  />
-                  <text 
-                    x={actualChartWidth + 6} 
-                    y={scaleY(activeOtcTrade.entryPrice) + 3} 
-                    fill="#0f172a" 
-                    fontSize={8} 
-                    fontWeight="black" 
-                    fontFamily="monospace"
-                  >
-                    ${activeOtcTrade.entryPrice.toFixed(0)}
-                  </text>
-                  {/* Flashing entry point circle */}
-                  <circle
-                    cx={getX(displayedCandleData.length - 1)}
-                    cy={scaleY(activeOtcTrade.entryPrice)}
-                    r={5}
-                    fill="#f59e0b"
-                    className="animate-ping"
-                  />
-                </g>
-              )}
+              {activeOtcTrades.map((trade) => {
+                const color = trade.side === 'buy' ? '#10b981' : '#ef4444';
+                return (
+                  <g key={trade.txId}>
+                    {/* Entry price horizontal dashed line */}
+                    <line 
+                      x1={0} 
+                      y1={scaleY(trade.entryPrice)} 
+                      x2={actualChartWidth} 
+                      y2={scaleY(trade.entryPrice)} 
+                      stroke={color} 
+                      strokeDasharray="4,4" 
+                      strokeWidth={1.5}
+                      strokeOpacity={0.8} 
+                    />
+                    {/* Flashing entry price badge on the right scale */}
+                    <rect
+                      x={actualChartWidth + 3}
+                      y={scaleY(trade.entryPrice) - 6}
+                      width={50}
+                      height={12}
+                      fill={color}
+                      rx={2}
+                    />
+                    <text 
+                      x={actualChartWidth + 6} 
+                      y={scaleY(trade.entryPrice) + 3} 
+                      fill="#0f172a" 
+                      fontSize={8} 
+                      fontWeight="black" 
+                      fontFamily="monospace"
+                    >
+                      ${trade.entryPrice.toFixed(0)}
+                    </text>
+                    {/* Flashing entry point circle */}
+                    <circle
+                      cx={getX(displayedCandleData.length - 1)}
+                      cy={scaleY(trade.entryPrice)}
+                      r={5}
+                      fill={color}
+                      className="animate-ping"
+                    />
+                  </g>
+                );
+              })}
 
               {/* Draw candlesticks */}
               {displayedCandleData.map((candle, idx) => {
@@ -1011,194 +1028,176 @@ export const MarketsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Active Pending Trade Card */}
-          {activeOtcTrade && (
-            <div className="bg-slate-900 border border-amber-500/30 rounded-xl p-4 space-y-3.5 shadow-xl animate-pulse">
-              <div className="flex items-center justify-between text-[10px] uppercase font-mono font-bold">
-                <span className="text-amber-500 flex items-center gap-1.5">
+          {/* Active Pending Trades List */}
+          {activeOtcTrades.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-[10px] uppercase font-mono font-bold text-amber-500">
+                <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
-                  LIVE CONTRACT TRADING ACTIVE
+                  LIVE CONTRACTS ACTIVE ({activeOtcTrades.length})
                 </span>
-                <span className="text-slate-400 font-bold">{activeOtcTrade.secondsLeft}s LEFT</span>
               </div>
-              
-              <div className="grid grid-cols-3 gap-2 text-xs font-mono bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                <div>
-                  <span className="text-[8px] text-slate-500 block">SIDE</span>
-                  <span className={`font-bold ${activeOtcTrade.side === 'buy' ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {activeOtcTrade.side === 'buy' ? '🟩 BUY' : '🟥 SELL'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[8px] text-slate-500 block">ENTRY PRICE</span>
-                  <span className="font-bold text-white">${activeOtcTrade.entryPrice.toFixed(2)}</span>
-                </div>
-                <div>
-                  <span className="text-[8px] text-slate-500 block">LIVE PRICE</span>
-                  <span className={`font-bold ${
-                    activeOtcTrade.side === 'buy'
-                      ? (currentPrice > activeOtcTrade.entryPrice ? 'text-emerald-400' : 'text-red-400')
-                      : (currentPrice < activeOtcTrade.entryPrice ? 'text-emerald-400' : 'text-red-400')
-                  }`}>
-                    ${currentPrice.toFixed(2)}
-                  </span>
-                </div>
-              </div>
+              <div className="max-h-[220px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                {activeOtcTrades.map((trade) => {
+                  const isWinning = trade.side === 'buy'
+                    ? (currentPrice > trade.entryPrice)
+                    : (currentPrice < trade.entryPrice);
+                  return (
+                    <div key={trade.txId} className="bg-slate-900 border border-slate-800/80 rounded-xl p-3 space-y-2 shadow-md relative">
+                      <div className="flex items-center justify-between text-[9px] uppercase font-mono font-bold">
+                        <span className={`px-1.5 py-0.5 rounded ${trade.side === 'buy' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                          {trade.side === 'buy' ? '🟩 BUY' : '🟥 SELL'} (${trade.amount})
+                        </span>
+                        <span className="text-slate-400 font-bold">{trade.secondsLeft}s LEFT</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2 text-[10px] font-mono bg-slate-950 p-1.5 rounded border border-slate-800">
+                        <div>
+                          <span className="text-[7px] text-slate-500 block">ENTRY PRICE</span>
+                          <span className="font-bold text-white">${trade.entryPrice.toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[7px] text-slate-500 block">LIVE PRICE</span>
+                          <span className={`font-bold ${isWinning ? 'text-emerald-400' : 'text-red-400'}`}>
+                            ${currentPrice.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
 
-              {/* Progress Bar indicator */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-[8px] text-slate-500 font-mono">
-                  <span>EXPIRATION COUNTER:</span>
-                  <span className="text-white font-bold">{activeOtcTrade.secondsLeft}s / {activeOtcTrade.durationSeconds}s</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
-                  <div 
-                    style={{ width: `${(activeOtcTrade.secondsLeft / activeOtcTrade.durationSeconds) * 100}%` }}
-                    className="h-full bg-amber-500 transition-all duration-1000 ease-linear"
-                  />
-                </div>
-              </div>
-
-              <div className="bg-slate-950/85 p-2 rounded border border-slate-800/60 text-center">
-                <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider block">
-                  CURRENT ESTIMATE:
-                </span>
-                <span className={`text-xs font-black font-mono tracking-widest ${
-                  activeOtcTrade.side === 'buy'
-                    ? (currentPrice > activeOtcTrade.entryPrice ? 'text-emerald-400' : 'text-red-400')
-                    : (currentPrice < activeOtcTrade.entryPrice ? 'text-emerald-400' : 'text-red-400')
-                }`}>
-                  {activeOtcTrade.side === 'buy'
-                    ? (currentPrice > activeOtcTrade.entryPrice ? '🟩 WINNING (IN THE MONEY)' : '🟥 LOSING (OUT OF THE MONEY)')
-                    : (currentPrice < activeOtcTrade.entryPrice ? '🟩 WINNING (IN THE MONEY)' : '🟥 LOSING (OUT OF THE MONEY)')
-                  }
-                </span>
+                      {/* Progress bar */}
+                      <div className="w-full h-1 bg-slate-950 rounded-full overflow-hidden">
+                        <div 
+                          style={{ width: `${(trade.secondsLeft / trade.durationSeconds) * 100}%` }}
+                          className="h-full bg-amber-500 transition-all duration-1000 ease-linear"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* Order Side Toggle Selector */}
-          {!activeOtcTrade && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[9px] text-slate-500 uppercase font-mono font-bold tracking-widest mb-1.5">
-                  1. SELECT CONTRACT DIRECTION
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setTradeSide('buy')}
-                    className={`py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 transition-all border cursor-pointer ${
-                      tradeSide === 'buy'
-                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-lg shadow-emerald-500/10 scale-[1.02]'
-                        : 'bg-slate-950 border-slate-900 text-slate-400 hover:border-slate-800'
-                    }`}
-                  >
-                    <TrendingUp className="w-4 h-4" />
-                    <span className="text-xs uppercase tracking-wider">BUY (GREEN)</span>
-                  </button>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[9px] text-slate-500 uppercase font-mono font-bold tracking-widest mb-1.5">
+                1. SELECT CONTRACT DIRECTION
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTradeSide('buy')}
+                  className={`py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 transition-all border cursor-pointer ${
+                    tradeSide === 'buy'
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-lg shadow-emerald-500/10 scale-[1.02]'
+                      : 'bg-slate-950 border-slate-900 text-slate-400 hover:border-slate-800'
+                  }`}
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  <span className="text-xs uppercase tracking-wider">BUY (GREEN)</span>
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setTradeSide('sell')}
-                    className={`py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 transition-all border cursor-pointer ${
-                      tradeSide === 'sell'
-                        ? 'bg-red-500 text-slate-950 border-red-400 shadow-lg shadow-red-500/10 scale-[1.02]'
-                        : 'bg-slate-950 border-slate-900 text-slate-400 hover:border-slate-800'
-                    }`}
-                  >
-                    <TrendingDown className="w-4 h-4" />
-                    <span className="text-xs uppercase tracking-wider">SELL (RED)</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setTradeSide('sell')}
+                  className={`py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 transition-all border cursor-pointer ${
+                    tradeSide === 'sell'
+                      ? 'bg-red-500 text-slate-950 border-red-400 shadow-lg shadow-red-500/10 scale-[1.02]'
+                      : 'bg-slate-950 border-slate-900 text-slate-400 hover:border-slate-800'
+                  }`}
+                >
+                  <TrendingDown className="w-4 h-4" />
+                  <span className="text-xs uppercase tracking-wider">SELL (RED)</span>
+                </button>
               </div>
-
-              {/* Expiration Selectors */}
-              <div>
-                <label className="block text-[9px] text-slate-500 uppercase font-mono font-bold tracking-widest mb-1.5">
-                  2. SELECT CONTRACT EXPIRATION TIME
-                </label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {durationOptions.map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setSelectedDuration(opt.value)}
-                      className={`py-2 rounded-xl font-bold font-mono text-[10px] uppercase tracking-wider transition-all border cursor-pointer ${
-                        selectedDuration === opt.value
-                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/10'
-                          : 'bg-slate-950 border-slate-900 text-slate-400 hover:border-slate-800'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Amount Size Inputs */}
-              <div>
-                <label className="block text-[9px] text-slate-500 uppercase font-mono font-bold tracking-widest mb-1.5">
-                  3. SPECIFY TRANSACTION AMOUNT (USDT)
-                </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="number"
-                    min="1"
-                    step="5"
-                    disabled={isSubmitting}
-                    placeholder="e.g. 50"
-                    value={tradeAmount}
-                    onChange={(e) => {
-                      setErrorMsg(null);
-                      setTradeAmount(e.target.value);
-                    }}
-                    className="w-full bg-slate-950 border border-slate-900 focus:border-emerald-500 rounded-xl py-3 pl-10 pr-4 text-sm text-white font-mono placeholder-slate-700 focus:outline-none transition-colors"
-                  />
-                </div>
-
-                {/* Preset shortcuts */}
-                <div className="grid grid-cols-5 gap-1.5 mt-2">
-                  {[10, 50, 100, 500].map(val => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setAmountPreset(val)}
-                      className="py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded text-[9px] font-mono font-bold tracking-wider cursor-pointer"
-                    >
-                      +{val}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setAmountPreset(-1)}
-                    className="py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 rounded text-[9px] font-mono font-bold tracking-wider cursor-pointer"
-                  >
-                    MAX
-                  </button>
-                </div>
-              </div>
-
-              {/* Error messages if any */}
-              {errorMsg && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] p-3 rounded-lg leading-relaxed font-mono">
-                  ❌ {errorMsg}
-                </div>
-              )}
-
-              {/* Execution Action Button */}
-              <button
-                type="button"
-                onClick={handlePlaceTrade}
-                disabled={isSubmitting}
-                className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-900 disabled:text-slate-500 text-slate-950 font-extrabold py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider text-xs"
-              >
-                <span>{isSubmitting ? "PROCESSING TRANSACTION..." : "EXECUTE OTC TRANSACTION"}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
             </div>
-          )}
+
+            {/* Expiration Selectors */}
+            <div>
+              <label className="block text-[9px] text-slate-500 uppercase font-mono font-bold tracking-widest mb-1.5">
+                2. SELECT CONTRACT EXPIRATION TIME
+              </label>
+              <div className="grid grid-cols-5 gap-1.5">
+                {durationOptions.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSelectedDuration(opt.value)}
+                    className={`py-2 rounded-xl font-bold font-mono text-[10px] uppercase tracking-wider transition-all border cursor-pointer ${
+                      selectedDuration === opt.value
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/10'
+                        : 'bg-slate-950 border-slate-900 text-slate-400 hover:border-slate-800'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Amount Size Inputs */}
+            <div>
+              <label className="block text-[9px] text-slate-500 uppercase font-mono font-bold tracking-widest mb-1.5">
+                3. SPECIFY TRANSACTION AMOUNT (USDT)
+              </label>
+              <div className="relative">
+                <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="number"
+                  min="0.1"
+                  step="any"
+                  disabled={isSubmitting}
+                  placeholder="e.g. 50"
+                  value={tradeAmount}
+                  onChange={(e) => {
+                    setErrorMsg(null);
+                    setTradeAmount(e.target.value);
+                  }}
+                  className="w-full bg-slate-950 border border-slate-900 focus:border-emerald-500 rounded-xl py-3 pl-10 pr-4 text-sm text-white font-mono placeholder-slate-700 focus:outline-none transition-colors"
+                />
+              </div>
+
+              {/* Preset shortcuts */}
+              <div className="grid grid-cols-5 gap-1.5 mt-2">
+                {[10, 50, 100, 500].map(val => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setAmountPreset(val)}
+                    className="py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded text-[9px] font-mono font-bold tracking-wider cursor-pointer"
+                  >
+                    +{val}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setAmountPreset(-1)}
+                  className="py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 rounded text-[9px] font-mono font-bold tracking-wider cursor-pointer"
+                >
+                  MAX
+                </button>
+              </div>
+            </div>
+
+            {/* Error messages if any */}
+            {errorMsg && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] p-3 rounded-lg leading-relaxed font-mono">
+                ❌ {errorMsg}
+              </div>
+            )}
+
+            {/* Execution Action Button */}
+            <button
+              type="button"
+              onClick={handlePlaceTrade}
+              disabled={isSubmitting}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-900 disabled:text-slate-500 text-slate-950 font-extrabold py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider text-xs"
+            >
+              <span>{isSubmitting ? "PROCESSING TRANSACTION..." : "EXECUTE OTC TRANSACTION"}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
 
           {/* Locked telemetry info text */}
           <div className="bg-slate-950 border border-slate-900 rounded-xl p-3 flex items-start space-x-2">
