@@ -75,7 +75,7 @@ interface AppContextType {
   referralCommFirstDeposit: number;
   referralCommSubsequentDeposit: number;
   updateReferralCommRates: (first: number, subsequent: number) => Promise<void>;
-  placeOtcTrade: (amount: number, side: 'buy' | 'sell', durationSeconds?: number, entryPrice?: number) => Promise<{ success: boolean; error?: string; txId?: string }>;
+  placeOtcTrade: (amount: number, side: 'buy' | 'sell', durationSeconds?: number, entryPrice?: number) => Promise<{ success: boolean; error?: string; txId?: string; targetWon?: boolean; startTime?: number }>;
   resolveOtcTrade: (roundIdOrTradeId: string | number, isDurationTrade?: boolean, wonOverride?: boolean, finalPrice?: number) => Promise<{ success: boolean; outcome?: 'buy' | 'sell'; won?: boolean; refund?: boolean }>;
 }
 
@@ -1315,7 +1315,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     side: 'buy' | 'sell',
     durationSeconds?: number,
     entryPrice?: number
-  ): Promise<{ success: boolean; error?: string; txId?: string }> => {
+  ): Promise<{ success: boolean; error?: string; txId?: string; targetWon?: boolean; startTime?: number }> => {
     if (!user) {
       return { success: false, error: 'User session not found. Please log in first.' };
     }
@@ -1329,6 +1329,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const txId = 'TRD-' + Math.floor(100000 + Math.random() * 900000);
       const roundId = Math.floor(Date.now() / 60000);
+      const targetWon = Math.random() < 0.5; // Determine win/lose target on placement
+      const startTime = Date.now();
 
       // Deduct balance
       const newBalance = Number((user.balance - amount).toFixed(2));
@@ -1360,14 +1362,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createdAt: new Date().toISOString(),
         referredBy: user.referredBy || null,
         durationSeconds: durationSeconds || 60,
-        entryPrice: entryPrice || 0
+        entryPrice: entryPrice || 0,
+        targetWon: targetWon,
+        startTime: startTime
       });
 
       // Update states
       setUser(prev => prev ? { ...prev, balance: newBalance } : null);
       setTransactions(prev => [newTx, ...prev]);
 
-      return { success: true, txId };
+      return { success: true, txId, targetWon, startTime };
     } catch (err: any) {
       console.error('Error placing OTC trade:', err);
       return { success: false, error: err.message || 'Failed to place trade.' };
@@ -1413,7 +1417,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (wonOverride !== undefined) {
           won = wonOverride;
         } else {
-          if (tradeSide === 'buy') {
+          if (tradeData.targetWon !== undefined) {
+            won = tradeData.targetWon;
+          } else if (tradeSide === 'buy') {
             won = exitPrice > entryPrice;
           } else {
             won = exitPrice < entryPrice;

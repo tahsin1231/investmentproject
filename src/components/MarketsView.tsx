@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -25,6 +27,7 @@ interface Candlestick {
   high: number;
   low: number;
   close: number;
+  timestamp?: number;
 }
 
 export const MarketsView: React.FC = () => {
@@ -68,6 +71,34 @@ export const MarketsView: React.FC = () => {
   } | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<number>(30); // Default: 30 seconds
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Refs to avoid tearing down/lagging intervals on fast state changes
+  const currentPriceRef = useRef<number>(basePrice);
+  const currentCandleRef = useRef<Candlestick | null>(null);
+  const activeOtcTradeRef = useRef<any>(null);
+  const currentRoundIdRef = useRef<number>(Math.floor(Date.now() / 60000));
+  const userRef = useRef<any>(null);
+
+  // Sync refs with state
+  useEffect(() => {
+    currentPriceRef.current = currentPrice;
+  }, [currentPrice]);
+
+  useEffect(() => {
+    currentCandleRef.current = currentCandle;
+  }, [currentCandle]);
+
+  useEffect(() => {
+    activeOtcTradeRef.current = activeOtcTrade;
+  }, [activeOtcTrade]);
+
+  useEffect(() => {
+    currentRoundIdRef.current = currentRoundId;
+  }, [currentRoundId]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const durationOptions = [
     { label: '10s', value: 10 },
@@ -128,42 +159,194 @@ export const MarketsView: React.FC = () => {
     };
   }, [user, currentRoundId]);
 
-  // Generate initial historical candles
+  // Load or generate historical candles with local caching and missing minutes catch-up
   useEffect(() => {
-    const historicalCandles: Candlestick[] = [];
-    let prevClose = basePrice - 180;
     const nowTime = Math.floor(Date.now() / 60000);
+    let loadedCandles: Candlestick[] = [];
+    let prevClose = basePrice - 180;
 
-    for (let i = 149; i > 0; i--) {
-      const timeStr = new Date((nowTime - i) * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const open = prevClose;
-      const change = (Math.random() - 0.48) * 120;
-      const close = open + change;
-      const high = Math.max(open, close) + Math.random() * 40;
-      const low = Math.min(open, close) - Math.random() * 40;
-
-      historicalCandles.push({
-        time: timeStr,
-        open,
-        high,
-        low,
-        close
-      });
-      prevClose = close;
+    try {
+      const cached = localStorage.getItem('dodooge_candles_v1');
+      if (cached) {
+        const parsed = JSON.parse(cached) as Candlestick[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loadedCandles = parsed;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to parse cached candles:", e);
     }
 
-    setCandles(historicalCandles);
+    if (loadedCandles.length > 0) {
+      const lastCandle = loadedCandles[loadedCandles.length - 1];
+      const lastTimestamp = lastCandle.timestamp || (nowTime - 1);
+      
+      // Catch up on any missing candles since the last load
+      if (lastTimestamp < nowTime) {
+        const missingMinutes = nowTime - lastTimestamp;
+        if (missingMinutes < 200) {
+          let lastClose = lastCandle.close;
+          for (let i = 1; i < missingMinutes; i++) {
+            const currentMin = lastTimestamp + i;
+            const timeStr = new Date(currentMin * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const open = lastClose;
+            const change = (Math.random() - 0.48) * 120;
+            const close = open + change;
+            const high = Math.max(open, close) + Math.random() * 40;
+            const low = Math.min(open, close) - Math.random() * 40;
+
+            loadedCandles.push({
+              time: timeStr,
+              open,
+              high,
+              low,
+              close,
+              timestamp: currentMin
+            });
+            lastClose = close;
+          }
+          if (loadedCandles.length > 500) {
+            loadedCandles = loadedCandles.slice(loadedCandles.length - 500);
+          }
+          prevClose = lastClose;
+        } else {
+          loadedCandles = [];
+        }
+      } else {
+        prevClose = lastCandle.close;
+      }
+    }
+
+    if (loadedCandles.length === 0) {
+      let currentPrevClose = basePrice - 180;
+      for (let i = 149; i > 0; i--) {
+        const currentMin = nowTime - i;
+        const timeStr = new Date(currentMin * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const open = currentPrevClose;
+        const change = (Math.random() - 0.48) * 120;
+        const close = open + change;
+        const high = Math.max(open, close) + Math.random() * 40;
+        const low = Math.min(open, close) - Math.random() * 40;
+
+        loadedCandles.push({
+          time: timeStr,
+          open,
+          high,
+          low,
+          close,
+          timestamp: currentMin
+        });
+        currentPrevClose = close;
+      }
+      prevClose = currentPrevClose;
+    }
+
+    try {
+      localStorage.setItem('dodooge_candles_v1', JSON.stringify(loadedCandles));
+    } catch (e) {
+      console.error("Failed to save candles to storage:", e);
+    }
+
+    setCandles(loadedCandles);
     setCurrentPrice(prevClose);
-    setCurrentCandle({
+    currentPriceRef.current = prevClose;
+    
+    const initialCandleObj = {
       time: new Date(nowTime * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       open: prevClose,
       high: prevClose,
       low: prevClose,
-      close: prevClose
-    });
+      close: prevClose,
+      timestamp: nowTime
+    };
+    setCurrentCandle(initialCandleObj);
+    currentCandleRef.current = initialCandleObj;
   }, []);
 
-  // Sync Timer countdown and handle round rollover + dynamic OTC trade ticking
+  // Sync active trades on mount (both local storage and cloud Firestore)
+  useEffect(() => {
+    const cachedTrade = localStorage.getItem('dodooge_active_otc_trade');
+    if (cachedTrade) {
+      try {
+        const parsed = JSON.parse(cachedTrade);
+        const elapsedSeconds = Math.floor((Date.now() - parsed.startTime) / 1000);
+        const remaining = parsed.durationSeconds - elapsedSeconds;
+        if (remaining > 0) {
+          const tradeData = {
+            ...parsed,
+            secondsLeft: remaining
+          };
+          setActiveOtcTrade(tradeData);
+          activeOtcTradeRef.current = tradeData;
+        } else {
+          localStorage.removeItem('dodooge_active_otc_trade');
+        }
+      } catch (e) {
+        console.error("Failed to parse cached trade:", e);
+      }
+    }
+
+    const syncFirestoreTrade = async () => {
+      if (!user) return;
+      try {
+        const q = query(
+          collection(db, 'otc_trades'),
+          where('userId', '==', user.id),
+          where('status', '==', 'pending')
+        );
+        const querySnap = await getDocs(q);
+        if (!querySnap.empty) {
+          const docsSorted = querySnap.docs.map(doc => {
+            const data = doc.data();
+            return {
+              txId: data.id,
+              amount: data.amount,
+              side: data.side,
+              entryPrice: data.entryPrice,
+              durationSeconds: data.durationSeconds,
+              startTime: data.startTime || new Date(data.createdAt).getTime(),
+              targetWon: data.targetWon ?? (Math.random() < 0.5)
+            };
+          }).sort((a, b) => b.startTime - a.startTime);
+
+          const latestTrade = docsSorted[0];
+          const elapsedSeconds = Math.floor((Date.now() - latestTrade.startTime) / 1000);
+          const remaining = latestTrade.durationSeconds - elapsedSeconds;
+
+          if (remaining > 0) {
+            const activeTradeData = {
+              txId: latestTrade.txId,
+              amount: latestTrade.amount,
+              side: latestTrade.side as 'buy' | 'sell',
+              entryPrice: latestTrade.entryPrice,
+              durationSeconds: latestTrade.durationSeconds,
+              secondsLeft: remaining,
+              startTime: latestTrade.startTime,
+              targetWon: latestTrade.targetWon
+            };
+            setActiveOtcTrade(activeTradeData);
+            activeOtcTradeRef.current = activeTradeData;
+            localStorage.setItem('dodooge_active_otc_trade', JSON.stringify(activeTradeData));
+          } else {
+            try {
+              const currentP = currentPriceRef.current;
+              await resolveOtcTrade(latestTrade.txId, true, latestTrade.targetWon, currentP);
+            } catch (err) {
+              console.error("Failed to resolve stale trade on mount:", err);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch pending trade from Firestore on mount:", err);
+      }
+    };
+
+    if (user) {
+      syncFirestoreTrade();
+    }
+  }, [user, resolveOtcTrade]);
+
+  // Streamlined, lag-free ticker interval for real-time price fluctuations, round transitions, and trade expirations
   useEffect(() => {
     const interval = setInterval(() => {
       const date = new Date();
@@ -172,31 +355,59 @@ export const MarketsView: React.FC = () => {
       setTimeLeft(newTimeLeft);
 
       const round = Math.floor(Date.now() / 60000);
-      if (round !== currentRoundId) {
-        // Round has changed!
-        setPrevRoundId(currentRoundId);
+      if (round !== currentRoundIdRef.current) {
+        const completedCandle = currentCandleRef.current;
+        if (completedCandle) {
+          setCandles(prev => {
+            const updated = [...prev, completedCandle];
+            const trimmed = updated.length > 500 ? updated.slice(updated.length - 500) : updated;
+            try {
+              localStorage.setItem('dodooge_candles_v1', JSON.stringify(trimmed));
+            } catch (e) {
+              console.error("Failed to save candles to storage:", e);
+            }
+            return trimmed;
+          });
+
+          setScrollOffset(prev => prev > 0 ? prev + 1 : 0);
+
+          const priceVal = currentPriceRef.current;
+          const nextTimeStr = new Date(round * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const newCandle = {
+            time: nextTimeStr,
+            open: priceVal,
+            high: priceVal,
+            low: priceVal,
+            close: priceVal,
+            timestamp: round
+          };
+          setCurrentCandle(newCandle);
+          currentCandleRef.current = newCandle;
+        }
+
+        setPrevRoundId(currentRoundIdRef.current);
         setCurrentRoundId(round);
+        currentRoundIdRef.current = round;
       }
 
-      // Small price fluctuation within the candle (fluctuates every second)
-      if (currentCandle) {
-        let volatility = (Math.random() - 0.5) * 12; // fluctuation amount
-        let newPrice = Number((currentPrice + volatility).toFixed(2));
+      const currentCandleVal = currentCandleRef.current;
+      if (currentCandleVal) {
+        let volatility = (Math.random() - 0.5) * 12;
+        let newPrice = Number((currentPriceRef.current + volatility).toFixed(2));
 
-        // Ticking active dynamic OTC trade
         let tradeFinished = false;
+        const activeTrade = activeOtcTradeRef.current;
 
-        if (activeOtcTrade) {
-          const nextSecondsLeft = activeOtcTrade.secondsLeft - 1;
+        if (activeTrade) {
+          const nextSecondsLeft = activeTrade.secondsLeft - 1;
           
           if (nextSecondsLeft <= 0) {
             tradeFinished = true;
           } else {
-            // Nudge price in the last 3 seconds of the trade to align with targetWon outcome
             if (nextSecondsLeft <= 3) {
-              const entry = activeOtcTrade.entryPrice;
-              const win = activeOtcTrade.targetWon;
-              const side = activeOtcTrade.side;
+              const entry = activeTrade.entryPrice;
+              const win = activeTrade.targetWon;
+              const side = activeTrade.side;
 
               if (side === 'buy') {
                 if (win && newPrice <= entry) {
@@ -204,7 +415,7 @@ export const MarketsView: React.FC = () => {
                 } else if (!win && newPrice >= entry) {
                   newPrice = Number((entry - (Math.random() * 4 + 1.2)).toFixed(2));
                 }
-              } else { // sell
+              } else {
                 if (win && newPrice >= entry) {
                   newPrice = Number((entry - (Math.random() * 4 + 1.2)).toFixed(2));
                 } else if (!win && newPrice <= entry) {
@@ -213,33 +424,37 @@ export const MarketsView: React.FC = () => {
               }
             }
 
-            // Update active trade local seconds left
-            setActiveOtcTrade(prev => prev ? { ...prev, secondsLeft: nextSecondsLeft } : null);
+            const updatedTrade = { ...activeTrade, secondsLeft: nextSecondsLeft };
+            setActiveOtcTrade(updatedTrade);
+            activeOtcTradeRef.current = updatedTrade;
+            localStorage.setItem('dodooge_active_otc_trade', JSON.stringify(updatedTrade));
           }
         }
 
         setCurrentPrice(newPrice);
+        currentPriceRef.current = newPrice;
 
-        setCurrentCandle(prev => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            close: newPrice,
-            high: Math.max(prev.high, newPrice),
-            low: Math.min(prev.low, newPrice)
-          };
-        });
+        const updatedCandle = {
+          ...currentCandleVal,
+          close: newPrice,
+          high: Math.max(currentCandleVal.high, newPrice),
+          low: Math.min(currentCandleVal.low, newPrice)
+        };
+        setCurrentCandle(updatedCandle);
+        currentCandleRef.current = updatedCandle;
 
-        // Resolve finished trade
-        if (tradeFinished && activeOtcTrade) {
+        if (tradeFinished && activeTrade) {
           const finishTrade = async () => {
             const finalP = newPrice;
-            const targetW = activeOtcTrade.targetWon;
-            const tId = activeOtcTrade.txId;
-            const amount = activeOtcTrade.amount;
-            const side = activeOtcTrade.side;
+            const targetW = activeTrade.targetWon;
+            const tId = activeTrade.txId;
+            const amount = activeTrade.amount;
+            const side = activeTrade.side;
 
             setActiveOtcTrade(null);
+            activeOtcTradeRef.current = null;
+            localStorage.removeItem('dodooge_active_otc_trade');
+
             setIsSubmitting(true);
             try {
               const res = await resolveOtcTrade(tId, true, targetW, finalP);
@@ -248,7 +463,7 @@ export const MarketsView: React.FC = () => {
                   roundId: 0,
                   outcome: targetW ? side : (side === 'buy' ? 'sell' : 'buy'),
                   won: targetW,
-                  refund: !targetW && !!user?.referredBy,
+                  refund: !targetW && !!userRef.current?.referredBy,
                   amount: amount,
                   show: true
                 });
@@ -266,40 +481,7 @@ export const MarketsView: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [currentPrice, currentCandle, currentRoundId, activeOtcTrade, user, resolveOtcTrade]);
-
-  // Watch round changes to commit previous candle and start a new one
-  useEffect(() => {
-    if (!currentCandle) return;
-
-    // If we transition to a new round, commit the finished candle to history
-    const commitAndStartNewRound = () => {
-      // 1. Add current completed candle to history
-      setCandles(prev => {
-        const updated = [...prev, currentCandle];
-        if (updated.length > 500) {
-          updated.shift(); // keep it clean
-        }
-        return updated;
-      });
-
-      // If viewing history, keep the view offset locked
-      setScrollOffset(prev => prev > 0 ? prev + 1 : 0);
-
-      // 2. Start a brand new candle
-      const nowTime = Math.floor(Date.now() / 60000);
-      const nextTimeStr = new Date(nowTime * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      setCurrentCandle({
-        time: nextTimeStr,
-        open: currentPrice,
-        high: currentPrice,
-        low: currentPrice,
-        close: currentPrice
-      });
-    };
-
-    commitAndStartNewRound();
-  }, [currentRoundId]);
+  }, [resolveOtcTrade]);
 
   // Render SVG Candlestick Chart
   const chartHeight = 260;
@@ -451,19 +633,21 @@ export const MarketsView: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const targetWonRoll = Math.random() < 0.5; // 50% chance of winning
       const res = await placeOtcTrade(parsedAmount, tradeSide, selectedDuration, currentPrice);
       if (res.success && res.txId) {
-        setActiveOtcTrade({
+        const nextTrade = {
           txId: res.txId,
           amount: parsedAmount,
           side: tradeSide,
           entryPrice: currentPrice,
           durationSeconds: selectedDuration,
           secondsLeft: selectedDuration,
-          startTime: Date.now(),
-          targetWon: targetWonRoll
-        });
+          startTime: res.startTime || Date.now(),
+          targetWon: res.targetWon !== undefined ? res.targetWon : (Math.random() < 0.5)
+        };
+        setActiveOtcTrade(nextTrade);
+        activeOtcTradeRef.current = nextTrade;
+        localStorage.setItem('dodooge_active_otc_trade', JSON.stringify(nextTrade));
         setErrorMsg(null);
       } else {
         setErrorMsg(res.error || "Failed to submit order to OTC pool.");
