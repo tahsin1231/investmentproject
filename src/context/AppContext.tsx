@@ -939,10 +939,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setTransactions(prev => prev.map(t => t.id === pendingTx.id ? { ...t, status: 'completed' as const } : t));
         setUser(prev => prev ? { ...prev, balance: newBalance } : null);
 
-        // 4. Process Referral Bonus
+        // 4. Process Referral Bonus (Under new rules, referrer only gets 20% commission upon plan purchase, not on deposit. Also, user is verified/counted only when purchasing a plan.)
         if (user.referredBy) {
-          await handleReferralRewardOnDeposit(user.id, user.email, user.referredBy, depositAmount, pendingTx.id);
-          // Also check and verify user referral status since they just made a completed deposit
+          // Check and verify user referral status in case they already have an active plan
           checkAndVerifyUserReferralState(user.id, user.referredBy).catch(console.error);
         }
 
@@ -1210,7 +1209,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             amount: commission,
             status: 'completed',
             date: new Date().toLocaleString(),
-            txHash: `Commission from user invite`
+            txHash: `Commission (${commRate}%) from referral purchase of ${plan.name}`
           };
           await setDoc(doc(db, 'users', referrerDoc.id, 'transactions', refTx.id), refTx);
 

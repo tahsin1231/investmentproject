@@ -18,20 +18,12 @@ export const checkAndVerifyUserReferralState = async (userId: string, referredBy
     // If already verified, do not duplicate scoring
     if (userData.referralVerified) return;
 
-    // Check if user has at least one completed deposit transaction
-    const txsRef = collection(db, 'users', userId, 'transactions');
-    const txsSnap = await getDocs(txsRef);
-    const hasCompletedDeposit = txsSnap.docs.some(d => {
-      const tx = d.data() as Transaction;
-      return tx.type === 'deposit' && tx.status === 'completed';
-    });
-
     // Check if user has at least one active plan
     const plansRef = collection(db, 'users', userId, 'activePlans');
     const plansSnap = await getDocs(plansRef);
     const hasActivePlan = !plansSnap.empty;
 
-    if (hasCompletedDeposit && hasActivePlan) {
+    if (hasActivePlan) {
       // 1. Mark user as verified referral sub-node
       await updateDoc(userRef, { referralVerified: true });
 

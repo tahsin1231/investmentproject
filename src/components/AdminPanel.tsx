@@ -1130,10 +1130,9 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, balance: newBalance } : u));
         setSelectedUser(prev => prev ? { ...prev, balance: newBalance } : null);
 
-        // Process referral commission
+        // Process referral commission (Under new rules, referrer only gets 20% commission upon plan purchase, not on deposit.)
         if (selectedUser.referredBy) {
-          await handleReferralRewardOnDeposit(selectedUser.id, selectedUser.email, selectedUser.referredBy, tx.amount, tx.id);
-          // Check and verify user referral state since a deposit was approved
+          // Check and verify user referral state in case they already have an active plan
           await checkAndVerifyUserReferralState(selectedUser.id, selectedUser.referredBy);
         }
         
