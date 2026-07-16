@@ -155,7 +155,7 @@ export const WalletView: React.FC = () => {
           <div className="text-lg font-bold text-amber-500 mb-2">
             ${user?.activeInvestments.toLocaleString(undefined, { minimumFractionDigits: 2 })} USDT
           </div>
-          <p className="text-[9px] text-emerald-500/40 uppercase">Capital committed to active 30-day lock levels</p>
+          <p className="text-[9px] text-emerald-500/40 uppercase">Capital deployed on active 30-day contract plans</p>
         </div>
 
         {/* Total Profits */}

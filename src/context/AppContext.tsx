@@ -77,12 +77,15 @@ interface AppContextType {
   updateReferralCommRates: (first: number, subsequent: number) => Promise<void>;
   placeOtcTrade: (amount: number, side: 'buy' | 'sell', durationSeconds?: number, entryPrice?: number) => Promise<{ success: boolean; error?: string; txId?: string; targetWon?: boolean; startTime?: number }>;
   resolveOtcTrade: (roundIdOrTradeId: string | number, isDurationTrade?: boolean, wonOverride?: boolean, finalPrice?: number) => Promise<{ success: boolean; outcome?: 'buy' | 'sell'; won?: boolean; refund?: boolean }>;
+  riskModalOpen: boolean;
+  setRiskModalOpen: (open: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [riskModalOpen, setRiskModalOpen] = useState<boolean>(false);
   const [activePlans, setActivePlans] = useState<ActivePlan[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stocks, setStocks] = useState<StockData[]>(INITIAL_STOCKS);
@@ -1723,7 +1726,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       referralCommSubsequentDeposit,
       updateReferralCommRates,
       placeOtcTrade,
-      resolveOtcTrade
+      resolveOtcTrade,
+      riskModalOpen,
+      setRiskModalOpen
     }}>
       {children}
     </AppContext.Provider>

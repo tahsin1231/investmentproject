@@ -4,7 +4,7 @@ import { translations } from '../utils/translations';
 import { Shield, Lock } from 'lucide-react';
 
 export const Footer: React.FC = () => {
-  const { language } = useApp();
+  const { language, setRiskModalOpen } = useApp();
   const t = translations[language];
 
   return (
@@ -28,7 +28,12 @@ export const Footer: React.FC = () => {
           <div className="flex flex-wrap justify-center gap-4 text-[10px] uppercase">
             <a href="#terms" className="hover:text-emerald-400 transition-colors">[Terms]</a>
             <a href="#privacy" className="hover:text-emerald-400 transition-colors">[Privacy]</a>
-            <a href="#disclaimer" className="hover:text-emerald-400 transition-colors">[Risk]</a>
+            <button 
+              onClick={() => setRiskModalOpen(true)} 
+              className="hover:text-emerald-400 transition-colors cursor-pointer bg-transparent border-none uppercase font-mono text-[10px]"
+            >
+              [Risk]
+            </button>
             <a href="https://t.me/Dodooge_Support" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:text-emerald-300 transition-colors font-bold">[Telegram Support]</a>
             <a href="mailto:dodoogesupport@gmail.com" className="text-emerald-400 hover:text-emerald-300 transition-colors font-bold">[Email Support]</a>
           </div>

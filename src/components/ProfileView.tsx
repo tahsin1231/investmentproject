@@ -4,7 +4,7 @@ import { translations } from '../utils/translations';
 import { ShieldCheck, Share2, Copy, Check, Users, HelpCircle, Award, Terminal, LogOut } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
-  const { user, referrals, language, logout } = useApp();
+  const { user, referrals, language, logout, setRiskModalOpen } = useApp();
   const t = translations[language];
 
   const [copiedLink, setCopiedLink] = useState(false);
@@ -113,6 +113,17 @@ export const ProfileView: React.FC = () => {
               >
                 dodoogesupport@gmail.com
               </a>
+            </div>
+
+            <div className="flex flex-col space-y-1 bg-slate-900 border border-emerald-500/10 rounded p-2.5">
+              <span className="text-[8px] text-emerald-500/40 uppercase font-bold tracking-wider">SAFETY STATEMENT</span>
+              <button 
+                onClick={() => setRiskModalOpen(true)}
+                className="text-emerald-400 hover:text-emerald-300 font-bold text-[11px] flex items-center justify-between transition-colors text-left cursor-pointer uppercase bg-transparent border-none p-0 w-full font-mono"
+              >
+                <span>[READ RISK DISCLOSURE]</span>
+                <span className="text-[8px] px-1 bg-amber-500/10 text-amber-500 border border-amber-500/30 rounded font-normal uppercase">WARNING</span>
+              </button>
             </div>
           </div>
         </div>

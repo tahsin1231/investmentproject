@@ -127,8 +127,8 @@ export const EarnView: React.FC = () => {
                     {/* Contract progress */}
                     <div className="space-y-1">
                       <div className="flex justify-between text-[9px] text-emerald-500/50 uppercase font-bold">
-                        <span>LOCK_TIME: {elapsedDays}/30 DAYS</span>
-                        <span>30-DAY COLD LOCK</span>
+                        <span>CONTRACT_DAYS: {elapsedDays}/30 DAYS</span>
+                        <span>30-DAY ACTIVE CONTRACT</span>
                       </div>
                       <div className="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
                         <div 
@@ -192,7 +192,7 @@ export const EarnView: React.FC = () => {
                     </div>
                     <div className="flex text-[9px] text-emerald-500/40 leading-relaxed pt-1 gap-1">
                       <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
-                      <span>CAPITAL COLD LOCKED FOR {plan.durationDays} DAYS. YIELD DISTRIBUTED SECURELY DAILY.</span>
+                      <span>PLAN VALID FOR {plan.durationDays} DAYS. YIELD DISTRIBUTED SECURELY DAILY.</span>
                     </div>
                   </div>
                 </div>

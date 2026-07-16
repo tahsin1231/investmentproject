@@ -45,17 +45,25 @@ function seedRandom(seed: number) {
 // Deterministic price based on minute timestamp
 function getPriceAtMinute(minute: number): number {
   const base = 64250.00;
-  // Slowly varying waves
-  const wave1 = 450 * Math.sin(minute / 60); // 1-hour cycle
-  const wave2 = 1200 * Math.sin(minute / 720); // 12-hour cycle
-  const wave3 = 180 * Math.sin(minute / 15); // 15-minute cycle
-  const wave4 = 80 * Math.sin(minute / 5); // 5-minute cycle
   
-  // Deterministic noise based on the minute seed
+  // Create beautiful, distinct, realistic trend cycles
+  // Wave 1: Ultra long-term drift (12-hour cycle)
+  const wave1 = 1500 * Math.sin(minute / 720);
+  // Wave 2: Medium-term trend waves (1.5-hour cycle)
+  const wave2 = 450 * Math.sin(minute / 90);
+  // Wave 3: Short-term trend sweeps (25-minute cycle) - creates 10-15 min continuous sweeps
+  const wave3 = 180 * Math.sin(minute / 25);
+  // Wave 4: Micro-trends (8-minute cycle) - creates beautiful clusters of 3-5 consecutive candles of the same color
+  const wave4 = 70 * Math.sin(minute / 8);
+  // Wave 5: Ultra-micro flutter (3-minute cycle) - adds minor structure
+  const wave5 = 25 * Math.sin(minute / 3);
+  
+  // Small random noise (deterministic per minute) - kept small (max +/- 8 USDT)
+  // so the trend direction is beautifully governed by the wave equations (creating continuous runs of green or red candles)
   const rand = seedRandom(minute);
-  const noise = (rand() - 0.5) * 60;
+  const noise = (rand() - 0.5) * 16;
   
-  return Number((base + wave1 + wave2 + wave3 + wave4 + noise).toFixed(2));
+  return Number((base + wave1 + wave2 + wave3 + wave4 + wave5 + noise).toFixed(2));
 }
 
 // Deterministic candle for a minute

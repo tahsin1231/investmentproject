@@ -13,6 +13,7 @@ import { MiningBot } from './components/MiningBot';
 import { BottomNav } from './components/BottomNav';
 import { Footer } from './components/Footer';
 import { AdminPanel } from './components/AdminPanel';
+import { RiskModal } from './components/RiskModal';
 import { Terminal as TerminalIcon, CornerDownRight, Trophy } from 'lucide-react';
 
 interface TerminalLog {
@@ -21,7 +22,7 @@ interface TerminalLog {
 }
 
 function MainApp() {
-  const { user, activePlans, buyPlan, triggerMiningPayout, miningBalance, maintenanceMode } = useApp();
+  const { user, activePlans, buyPlan, triggerMiningPayout, miningBalance, maintenanceMode, riskModalOpen, setRiskModalOpen } = useApp();
   const [currentTab, setCurrentTab] = useState<'home' | 'markets' | 'earn' | 'wallet' | 'profile' | 'referral'>('home');
   const [authView, setAuthView] = useState<'login' | 'register' | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -250,7 +251,7 @@ function MainApp() {
             { text: "  L5: Price 300$ | Yield: 10.00$ - 15.00$ daily", type: 'output' },
             { text: "  L6: Price 500$ | Yield: 18.00$ - 25.00$ daily", type: 'output' },
             { text: "  L7: Price 1000$| Yield: 30.00$ - 50.00$ daily", type: 'output' },
-            { text: "  Note: Plans locked in for 30 days. Profits accumulate daily.", type: 'output' }
+            { text: "  Note: Plan durations are 30 days. Profits accumulate daily.", type: 'output' }
           );
         } else {
           newLogs.push({ text: "USAGE: cat [balance.txt | plans.txt]", type: 'error' });
@@ -498,6 +499,12 @@ function MainApp() {
         view={authView} 
         onClose={() => setAuthView(null)} 
         onSetView={setAuthView} 
+      />
+
+      {/* System Risk Warning Modal */}
+      <RiskModal 
+        isOpen={riskModalOpen} 
+        onClose={() => setRiskModalOpen(false)} 
       />
 
     </div>
