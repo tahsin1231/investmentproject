@@ -44,7 +44,8 @@ import {
   CheckSquare,
   History,
   Download,
-  FileText
+  FileText,
+  ExternalLink
 } from 'lucide-react';
 
 interface PromoCode {
@@ -126,6 +127,15 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
   // Withdrawals queue state
   const [pendingWithdrawals, setPendingWithdrawals] = useState<(Transaction & { userId: string; userEmail: string })[]>([]);
   const [loadingWithdrawals, setLoadingWithdrawals] = useState(false);
+  const [selectedWithdrawalForModal, setSelectedWithdrawalForModal] = useState<(Transaction & { userId: string; userEmail: string }) | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  
+  const handleCopyText = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(null), 1500);
+  };
+
   const [withdrawalsEnabled, setWithdrawalsEnabled] = useState(true);
   const [totalPlatformBalance, setTotalPlatformBalance] = useState(0);
   const [loadingPlatformBalance, setLoadingPlatformBalance] = useState(false);
@@ -599,68 +609,32 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
   };
 
   const handleApproveWithdrawal = async (tx: any, userId: string) => {
-    const netAmount = tx.netAmount || Number((tx.amount - 0.25).toFixed(2));
-    const address = tx.address || tx.txHash;
-
-    const confirmApprove = window.confirm(`Are you sure you want to approve this withdrawal request?\n\nUser: ${tx.userEmail}\nAmount: $${tx.amount.toFixed(2)} USDT\nFee: $0.25 USDT\nNet Payout Amount: $${netAmount.toFixed(2)} USDT\nDestination Wallet Address: ${address}\n\nClick OK to initiate a real OxaPay cryptocurrency payout. This action is irreversible.`);
-    if (!confirmApprove) return;
-
     try {
-      // Add a status indicator or show alert
-      addAuditLog(`Initiating Payout for Tx ${tx.id}`, userId);
-
-      const response = await fetch('/api/oxapay/payout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          apiKey: oxapayPayoutKeyInput,
-          address: address,
-          amount: netAmount
-        })
+      const txRef = doc(db, 'users', userId, 'transactions', tx.id);
+      
+      await updateDoc(txRef, { 
+        status: 'completed',
+        payoutStatus: 'completed',
+        payoutTrackId: 'MANUAL-' + Math.floor(100000 + Math.random() * 900000)
       });
 
-      const resData = await response.json();
-
-      if (resData.status === 200 || resData.status === '200' || resData.status === 'success') {
-        const txRef = doc(db, 'users', userId, 'transactions', tx.id);
-        const trackId = resData.trackId || resData.track_id || (resData.data && (resData.data.trackId || resData.data.track_id)) || '';
-        const payoutStatus = resData.payoutStatus || resData.status || (resData.data && resData.data.status) || 'success';
-        
-        await updateDoc(txRef, { 
-          status: 'completed',
-          payoutTrackId: String(trackId),
-          payoutStatus: String(payoutStatus)
+      // Decrement total platform balance in settings/global
+      try {
+        await updateDoc(doc(db, 'settings', 'global'), {
+          totalPlatformBalance: increment(-tx.amount)
         });
-
-        // Decrement total platform balance in settings/global
-        try {
-          await updateDoc(doc(db, 'settings', 'global'), {
-            totalPlatformBalance: increment(-tx.amount)
-          });
-        } catch (settingsErr) {
-          console.error('Failed to update global totalPlatformBalance:', settingsErr);
-        }
-
-        addAuditLog(`Approved Withdrawal ${tx.id} - Payout successful. Track ID: ${trackId}`, userId);
-        alert(`Withdrawal approved and OxaPay Payout processed successfully!\nTrack ID: ${trackId}`);
-      } else {
-        const errorMsg = resData.message || (resData.error && resData.error.message) || 'Unknown OxaPay error';
-        
-        if (errorMsg.toLowerCase().includes('balance') || errorMsg.toLowerCase().includes('insufficient')) {
-          alert(`❌ OXAPAY PAYOUT FAILED: INSUFFICIENT BALANCE\n\nYour OxaPay payout account does not have enough balance to complete this transfer.\n\nPlease top up your OxaPay merchant/payout wallet and try again. The transaction status remains PENDING.`);
-        } else {
-          alert(`OxaPay Payout Failed: ${errorMsg}\n\nThe transaction has been kept as pending. Please verify your Payout API key and OxaPay balance before trying again.`);
-        }
-        addAuditLog(`OxaPay Payout Failed for Tx ${tx.id}: ${errorMsg}`, userId);
+      } catch (settingsErr) {
+        console.error('Failed to update global totalPlatformBalance:', settingsErr);
       }
+
+      addAuditLog(`Manually Approved Withdrawal ${tx.id} ($${tx.amount} USDT completed)`, userId);
+      alert(`Withdrawal approved manually successfully!`);
       
       fetchPendingWithdrawals();
       fetchUsers();
       fetchPlatformBalance();
     } catch (err: any) {
-      alert('Failed to execute payout: ' + err.message);
+      alert('Failed to approve withdrawal manually: ' + err.message);
     }
   };
 
@@ -2842,17 +2816,22 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
                     </thead>
                     <tbody>
                       {pendingWithdrawals.map((tx) => (
-                        <tr key={tx.id} className="border-b border-emerald-500/10 hover:bg-slate-900/40 text-emerald-400/80">
+                        <tr 
+                          key={tx.id} 
+                          onClick={() => setSelectedWithdrawalForModal(tx)}
+                          className="border-b border-emerald-500/10 hover:bg-slate-900/60 text-emerald-400/80 cursor-pointer transition-all"
+                          title="Click to review manual payout details"
+                        >
                           <td className="py-2.5 font-bold text-white">{tx.userEmail}</td>
                           <td className="py-2.5 text-slate-400">0x{tx.id.slice(0, 8)}</td>
                           <td className="py-2.5 font-bold text-emerald-300">${tx.amount.toFixed(2)}</td>
                           <td className="py-2.5 text-slate-300 truncate max-w-[150px]" title={tx.address}>
                             {tx.address || 'Not specified'}
                           </td>
-                          <td className="py-2.5">
+                          <td className="py-2.5" onClick={(e) => e.stopPropagation()}>
                             {tx.status === 'completed' && (
                               <span className="px-2 py-0.5 rounded text-[8px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 uppercase">
-                                Auto-Paid
+                                Completed
                               </span>
                             )}
                             {tx.status === 'rejected' && (
@@ -2867,22 +2846,15 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
                             )}
                           </td>
                           <td className="py-2.5 text-emerald-500/40">{tx.date}</td>
-                          <td className="py-2.5 text-right space-x-2">
+                          <td className="py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                             {tx.status === 'pending' ? (
-                              <>
-                                <button
-                                  onClick={() => handleApproveWithdrawal(tx, tx.userId)}
-                                  className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-[9px] transition-all uppercase cursor-pointer"
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={() => handleRejectWithdrawal(tx, tx.userId)}
-                                  className="px-2.5 py-1 bg-red-950 hover:bg-red-950/40 border border-red-500/30 hover:border-red-500/50 text-red-400 font-bold rounded text-[9px] transition-all uppercase cursor-pointer"
-                                >
-                                  Disapprove
-                                </button>
-                              </>
+                              <button
+                                onClick={() => setSelectedWithdrawalForModal(tx)}
+                                className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-[9px] transition-all uppercase cursor-pointer flex items-center gap-1 ml-auto"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                <span>Review Request</span>
+                              </button>
                             ) : (
                               <span className="text-slate-600 text-[8px] italic uppercase">PROCESSED</span>
                             )}
@@ -3062,6 +3034,187 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         </div>
 
       </div>
+
+      {selectedWithdrawalForModal && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in font-mono select-text">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl relative flex flex-col">
+            
+            {/* Top Glow Bar */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-amber-500 to-transparent" />
+
+            {/* Header */}
+            <div className="p-5 border-b border-amber-500/10 bg-slate-950/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-500">
+                  <ShieldAlert className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <span className="text-[8px] text-amber-500/50 uppercase tracking-widest block font-bold">MANUAL DISBURSEMENT</span>
+                  <h2 className="text-xs font-bold text-white uppercase tracking-wider">WITHDRAWAL REQUEST VERIFICATION</h2>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedWithdrawalForModal(null)}
+                className="text-slate-500 hover:text-white text-xs hover:scale-110 transition-transform cursor-pointer p-1"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4 text-xs text-slate-300">
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 space-y-3">
+                
+                {/* Email Row */}
+                <div className="flex flex-col space-y-1">
+                  <span className="text-[8px] text-slate-500 uppercase font-bold tracking-wider">USER ACCOUNT EMAIL</span>
+                  <div className="flex items-center justify-between gap-2 bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-white">
+                    <span className="truncate select-all text-[11px]">{selectedWithdrawalForModal.userEmail}</span>
+                    <button 
+                      onClick={() => handleCopyText(selectedWithdrawalForModal.userEmail, 'email')}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-750 text-emerald-400 hover:text-emerald-300 rounded text-[9px] transition-colors cursor-pointer border border-emerald-500/10 font-bold"
+                    >
+                      {copiedField === 'email' ? 'COPIED!' : 'COPY'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Transaction ID Row */}
+                <div className="flex flex-col space-y-1">
+                  <span className="text-[8px] text-slate-500 uppercase font-bold tracking-wider">TRANSACTION REFERENCE ID</span>
+                  <div className="flex items-center justify-between gap-2 bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-white">
+                    <span className="select-all text-[11px] font-bold text-slate-400">{selectedWithdrawalForModal.id}</span>
+                    <button 
+                      onClick={() => handleCopyText(selectedWithdrawalForModal.id, 'txId')}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-750 text-emerald-400 hover:text-emerald-300 rounded text-[9px] transition-colors cursor-pointer border border-emerald-500/10 font-bold"
+                    >
+                      {copiedField === 'txId' ? 'COPIED!' : 'COPY'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Destination BEP20 Wallet Address */}
+                <div className="flex flex-col space-y-1">
+                  <span className="text-[8px] text-amber-500 uppercase font-bold tracking-wider">BSC/BEP20 DESTINATION WALLET ADDRESS</span>
+                  <div className="flex items-center justify-between gap-2 bg-slate-900 border border-amber-500/10 rounded px-2.5 py-1.5 text-amber-400 font-semibold">
+                    <span className="break-all select-all text-[11px] font-bold">{selectedWithdrawalForModal.address || selectedWithdrawalForModal.txHash}</span>
+                    <button 
+                      onClick={() => handleCopyText(selectedWithdrawalForModal.address || selectedWithdrawalForModal.txHash, 'address')}
+                      className="px-2 py-0.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded text-[9px] transition-colors cursor-pointer border border-amber-500/20 font-bold"
+                    >
+                      {copiedField === 'address' ? 'COPIED!' : 'COPY'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Financial Ledger Details */}
+                <div className="grid grid-cols-2 gap-3.5 pt-1">
+                  
+                  {/* Gross Amount */}
+                  <div className="flex flex-col space-y-1 bg-slate-900/40 border border-slate-800/60 rounded p-2.5">
+                    <span className="text-[8px] text-slate-500 uppercase font-bold tracking-wider">GROSS QUANTITY</span>
+                    <div className="flex items-center justify-between gap-1 text-[11px] text-white font-bold">
+                      <span>${selectedWithdrawalForModal.amount.toFixed(2)} USDT</span>
+                      <button 
+                        onClick={() => handleCopyText(selectedWithdrawalForModal.amount.toFixed(2), 'gross')}
+                        className="px-1.5 py-0.5 bg-slate-800 text-[8px] text-emerald-400 rounded cursor-pointer font-bold border border-emerald-500/10"
+                      >
+                        {copiedField === 'gross' ? 'COP' : 'CPY'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Transaction Fee */}
+                  <div className="flex flex-col space-y-1 bg-slate-900/40 border border-slate-800/60 rounded p-2.5">
+                    <span className="text-[8px] text-slate-500 uppercase font-bold tracking-wider">NETWORK FEE</span>
+                    <div className="text-[11px] text-red-400 font-bold pt-0.5">
+                      $0.25 USDT
+                    </div>
+                  </div>
+
+                  {/* Net Payout Amount */}
+                  <div className="flex flex-col space-y-1 bg-emerald-500/5 border border-emerald-500/15 rounded p-2.5 col-span-2">
+                    <span className="text-[8px] text-emerald-500 uppercase font-extrabold tracking-wider">NET PAYOUT QUANTITY (TO SEND)</span>
+                    <div className="flex items-center justify-between gap-1 text-[13px] text-emerald-300 font-extrabold">
+                      <span>${(selectedWithdrawalForModal.amount - 0.25).toFixed(2)} USDT</span>
+                      <button 
+                        onClick={() => handleCopyText((selectedWithdrawalForModal.amount - 0.25).toFixed(2), 'net')}
+                        className="px-2 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-400 rounded text-[9px] cursor-pointer border border-emerald-500/20 font-bold"
+                      >
+                        {copiedField === 'net' ? 'COPIED!' : 'COPY NET'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Current User Balance context */}
+                  {(() => {
+                    const uObj = users.find(u => u.id === selectedWithdrawalForModal.userId);
+                    if (!uObj) return null;
+                    return (
+                      <div className="flex flex-col space-y-1 bg-slate-900/40 border border-slate-800/60 rounded p-2.5 col-span-2">
+                        <span className="text-[8px] text-slate-500 uppercase font-bold tracking-wider">USER CURRENT ACCOUNT BALANCE</span>
+                        <div className="flex items-center justify-between gap-1 text-[11px] text-slate-300 font-bold">
+                          <span>${uObj.balance.toFixed(2)} USDT</span>
+                          <button 
+                            onClick={() => handleCopyText(uObj.balance.toFixed(2), 'userBalance')}
+                            className="px-2 py-0.5 bg-slate-800 text-[8px] text-emerald-400 rounded cursor-pointer border border-emerald-500/10 font-bold"
+                          >
+                            {copiedField === 'userBalance' ? 'COPIED!' : 'COPY BALANCE'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                </div>
+
+                {/* Date Row */}
+                <div className="flex flex-col space-y-1 pt-1 text-[10px] text-slate-500">
+                  <span className="text-[8px] uppercase font-bold tracking-wider">DATE REQUESTED</span>
+                  <div className="flex items-center justify-between">
+                    <span>{selectedWithdrawalForModal.date}</span>
+                    <button 
+                      onClick={() => handleCopyText(selectedWithdrawalForModal.date, 'date')}
+                      className="text-[8px] text-emerald-500/60 hover:text-emerald-400 transition-colors uppercase font-bold cursor-pointer"
+                    >
+                      {copiedField === 'date' ? '[Copied]' : '[Copy Date]'}
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row gap-2.5 justify-end">
+              <button
+                onClick={() => {
+                  if (window.confirm("Disapprove & reject this request? Funds will be refunded to user balance immediately.")) {
+                    handleRejectWithdrawal(selectedWithdrawalForModal, selectedWithdrawalForModal.userId);
+                    setSelectedWithdrawalForModal(null);
+                  }
+                }}
+                className="px-4 py-2 bg-red-950/60 hover:bg-red-900/40 border border-red-500/20 hover:border-red-500/50 text-red-400 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+              >
+                Reject & Refund
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm("Approve this withdrawal manually? Ensure you have copied the address and sent the Net Payout Amount manually before clicking Approve. This will mark the transaction as completed.")) {
+                    handleApproveWithdrawal(selectedWithdrawalForModal, selectedWithdrawalForModal.userId);
+                    setSelectedWithdrawalForModal(null);
+                  }
+                }}
+                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold rounded-lg text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow-md shadow-emerald-500/10"
+              >
+                Approve & Complete
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

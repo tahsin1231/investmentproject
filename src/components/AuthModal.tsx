@@ -109,8 +109,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative">
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in select-text">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[95vh] overflow-y-auto scrollbar-thin shadow-2xl relative">
         
         {/* Header Glow */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-amber-500 to-transparent" />
@@ -123,8 +123,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
           [ESC]
         </button>
 
-        <div className="p-8">
-          <div className="flex items-center space-x-2 mb-6">
+        <div className={view === 'register' ? 'p-5 md:p-6' : 'p-8'}>
+          <div className={`flex items-center space-x-2 ${view === 'register' ? 'mb-4' : 'mb-6'}`}>
             <img 
               src="https://iili.io/C1qgH3x.jpg" 
               alt="DODOOGE Logo" 
@@ -136,16 +136,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
             </span>
           </div>
 
-          <h2 className="text-2xl font-bold text-white tracking-tight mb-2">
+          <h2 className={`text-xl md:text-2xl font-bold text-white tracking-tight ${view === 'register' ? 'mb-1' : 'mb-2'}`}>
             {view === 'register' ? t.signUpTitle : t.login}
           </h2>
-          <p className="text-slate-400 text-xs leading-relaxed mb-6">
+          <p className={`text-slate-400 text-xs leading-relaxed ${view === 'register' ? 'mb-4' : 'mb-6'}`}>
             {view === 'register' ? t.signUpSubtitle : 'Access your secure quant indicators, active miners, and premium telemetry charts.'}
           </p>
 
           {error && (
             error.includes('authorized domains list') || error.includes('unauthorized-domain') ? (
-              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl p-4 text-xs mb-5 space-y-3 font-sans">
+              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl p-4 text-xs mb-4 space-y-3 font-sans">
                 <div className="font-bold font-mono text-amber-500 flex items-center gap-1.5 uppercase tracking-wide">
                   ⚠️ Domain Authorization Required
                 </div>
@@ -174,18 +174,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                 </div>
               </div>
             ) : (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs mb-4 font-mono">
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs mb-4 font-mono select-text">
                 {error}
               </div>
             )
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className={view === 'register' ? 'space-y-3' : 'space-y-4'}>
             {view === 'register' && (
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">
                       First Name
                     </label>
                     <div className="relative">
@@ -197,12 +197,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                         placeholder="John"
                         value={firstName}
                         onChange={(e) => setFirstName(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors"
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors select-text"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">
                       Last Name
                     </label>
                     <div className="relative">
@@ -214,7 +214,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                         placeholder="Doe"
                         value={lastName}
                         onChange={(e) => setLastName(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors"
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors select-text"
                       />
                     </div>
                   </div>
@@ -222,7 +222,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">
                       Username
                     </label>
                     <div className="relative">
@@ -234,12 +234,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                         placeholder="johndoe12"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors font-mono"
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors font-mono select-text"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">
                       Phone (Optional)
                     </label>
                     <div className="relative">
@@ -250,7 +250,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                         placeholder="+123456789"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors"
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors select-text"
                       />
                     </div>
                   </div>
@@ -259,11 +259,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
             )}
 
             <div>
-              <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+              <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">
                 {t.emailLabel}
               </label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
                 <input
                   type="email"
                   required
@@ -271,17 +271,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                   placeholder="name@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors"
+                  className={`w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl pr-3 text-white placeholder-slate-600 focus:outline-none transition-colors select-text ${view === 'register' ? 'py-2 pl-9 text-xs' : 'py-3 pl-11 text-sm'}`}
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+              <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">
                 Password (Secured Session Pin)
               </label>
               <div className="relative">
-                <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
                 <input
                   type="password"
                   required
@@ -289,7 +289,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors"
+                  className={`w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl pr-3 text-white placeholder-slate-600 focus:outline-none transition-colors select-text ${view === 'register' ? 'py-2 pl-9 text-xs' : 'py-3 pl-11 text-sm'}`}
                 />
               </div>
             </div>
@@ -297,11 +297,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
             {view === 'register' && (
               <>
                 <div>
-                  <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                  <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">
                     Confirm Password
                   </label>
                   <div className="relative">
-                    <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
                     <input
                       type="password"
                       required
@@ -309,13 +309,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                       placeholder="••••••••"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors"
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2 pl-9 pr-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors select-text"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+                  <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">
                     {t.refLabel}
                   </label>
                   <input
@@ -324,9 +324,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
                     placeholder="PX-XXXXXX"
                     value={refCode}
                     onChange={(e) => setRefCode(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-3 px-4 text-sm text-white placeholder-slate-600 focus:outline-none transition-colors font-mono"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors font-mono select-text"
                   />
-                  <div className="mt-1.5 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 text-[10px] text-amber-400 leading-normal font-sans">
+                  <div className="mt-1 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 text-[10px] text-amber-400 leading-normal font-sans select-text">
                     💡 <b>Exclusive Bonus:</b> Users who register with a referral code will receive a <b>50% refund on lost OTC trades</b>! Direct accounts get a 0% refund.
                   </div>
                 </div>
@@ -336,14 +336,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ view, onClose, onSetView }
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/50 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/10 hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 mt-2 cursor-pointer"
+              className={`w-full bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/50 text-slate-950 font-bold px-4 rounded-xl shadow-lg shadow-amber-500/10 hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer ${view === 'register' ? 'py-2.5 text-xs mt-1.5' : 'py-3.5 text-sm mt-2'}`}
             >
               <span>{loading ? 'Processing...' : (view === 'register' ? t.submitSignUp : t.login)}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
-          <div className="mt-6 text-center">
+          <div className={view === 'register' ? 'mt-4 text-center' : 'mt-6 text-center'}>
             <button
               onClick={() => onSetView(view === 'register' ? 'login' : 'register')}
               className="text-xs text-slate-400 hover:text-amber-400 transition-colors cursor-pointer"
