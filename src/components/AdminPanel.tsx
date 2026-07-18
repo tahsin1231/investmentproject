@@ -122,6 +122,8 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
   const [maxWithdrawalInput, setMaxWithdrawalInput] = useState('1000.00');
   const [monthlyWithdrawalLimitInput, setMonthlyWithdrawalLimitInput] = useState('5000.00');
   const [dailyWithdrawalLimitInput, setDailyWithdrawalLimitInput] = useState('1000.00');
+  const [adminPanelPasswordInput, setAdminPanelPasswordInput] = useState('Admin23');
+  const [stealthPanelPasswordInput, setStealthPanelPasswordInput] = useState('Tahsin23');
   const [systemSaving, setSystemSaving] = useState(false);
 
   // Withdrawals queue state
@@ -253,15 +255,38 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
     setAuthError(null);
     setAuthLoading(true);
 
-    if (adminEmail.trim().toLowerCase() !== 'admin@gmail.com' || adminPassword !== 'Admin23') {
+    let targetAdminPassword = 'Admin23';
+    try {
+      const settingsRef = doc(db, 'settings', 'global');
+      const settingsSnap = await getDoc(settingsRef);
+      if (settingsSnap.exists()) {
+        const data = settingsSnap.data();
+        if (data.adminPassword) {
+          targetAdminPassword = data.adminPassword;
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching admin password from Firestore settings:', err);
+    }
+
+    if (adminEmail.trim().toLowerCase() !== 'admin@gmail.com' || adminPassword !== targetAdminPassword) {
       setAuthError('Unauthorized Administrator credentials.');
       setAuthLoading(false);
       return;
     }
 
     try {
-      // Login with standard firebase sign in
-      const res = await signInWithEmailAndPassword(auth, adminEmail.trim(), adminPassword);
+      // Login with standard firebase sign in (using targetAdminPassword, just in case auth was synchronized or if we use standard email/password credentials)
+      let res;
+      try {
+        res = await signInWithEmailAndPassword(auth, adminEmail.trim(), adminPassword);
+      } catch (authErr: any) {
+        // If password is changed in settings but Firebase auth still expects Admin23 (or visa versa), 
+        // we can authenticate based on the Firestore config.
+        // Thus, we sign in with 'Admin23' to authenticate the firebase auth session, or handle it gracefully.
+        console.warn('Standard firebase auth signin failed, trying fallback standard credential:', authErr);
+        res = await signInWithEmailAndPassword(auth, 'admin@gmail.com', 'Admin23');
+      }
       
       // Auto-create profile in Firestore if it doesn't exist
       const adminDocRef = doc(db, 'users', res.user.uid);
@@ -303,12 +328,26 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
   };
 
   // Authenticate Stealth Admin
-  const handleStealthLogin = (e: React.FormEvent) => {
+  const handleStealthLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
     setAuthLoading(true);
 
-    if (stealthPassword !== 'Tahsin23') {
+    let targetStealthPassword = 'Tahsin23';
+    try {
+      const settingsRef = doc(db, 'settings', 'global');
+      const settingsSnap = await getDoc(settingsRef);
+      if (settingsSnap.exists()) {
+        const data = settingsSnap.data();
+        if (data.stealthPassword) {
+          targetStealthPassword = data.stealthPassword;
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching stealth password from Firestore settings:', err);
+    }
+
+    if (stealthPassword !== targetStealthPassword) {
       setAuthError('Access Rejected: Invalid Stealth Password Key.');
       setAuthLoading(false);
       return;
@@ -410,6 +449,8 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         setReferralCommFirstDepositInput(String(data.referralCommFirstDeposit ?? '20'));
         setReferralCommSubsequentDepositInput(String(data.referralCommSubsequentDeposit ?? '20'));
         setWithdrawalsEnabled(data.withdrawalsEnabled !== false);
+        setAdminPanelPasswordInput(data.adminPassword || 'Admin23');
+        setStealthPanelPasswordInput(data.stealthPassword || 'Tahsin23');
       }
     } catch (err) {
       console.error('Error fetching global settings:', err);
@@ -1170,7 +1211,9 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
         referralCommissionRate: parseFloat(referralCommissionRateInput) || 20,
         referralCommFirstDeposit: parseFloat(referralCommFirstDepositInput) || 20,
         referralCommSubsequentDeposit: parseFloat(referralCommSubsequentDepositInput) || 20,
-        withdrawalsEnabled: withdrawalsEnabled
+        withdrawalsEnabled: withdrawalsEnabled,
+        adminPassword: adminPanelPasswordInput,
+        stealthPassword: stealthPanelPasswordInput
       }, { merge: true });
 
       addAuditLog('Updated Global Settings Matrix', 'Mainframe Config');
@@ -2569,6 +2612,40 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
                         />
                       </div>
                     </div>
+                  </div>
+
+                  {/* Admin Credentials Overrides */}
+                  <div className="bg-slate-950 p-4 border border-emerald-500/10 rounded-xl space-y-3">
+                    <div className="flex items-center gap-1.5 text-white border-b border-emerald-500/10 pb-2">
+                      <Lock className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">Admin Credentials Override</span>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <span className="text-[8px] text-slate-500 block uppercase mb-1">Admin Panel Password</span>
+                        <input
+                          type="text"
+                          value={adminPanelPasswordInput}
+                          onChange={(e) => setAdminPanelPasswordInput(e.target.value)}
+                          placeholder="Admin23"
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none font-mono"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[8px] text-slate-500 block uppercase mb-1">Stealth Mode Password</span>
+                        <input
+                          type="text"
+                          value={stealthPanelPasswordInput}
+                          onChange={(e) => setStealthPanelPasswordInput(e.target.value)}
+                          placeholder="Tahsin23"
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none font-mono"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[8px] text-slate-500 uppercase leading-normal">
+                      Specify the passwords used to authorize admin and stealth login sessions. Changes take effect on saving and are verified on subsequent logins.
+                    </p>
                   </div>
                 </div>
               </div>
