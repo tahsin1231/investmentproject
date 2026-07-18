@@ -332,6 +332,8 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
       const snap = await getDocs(usersRef);
       const list = snap.docs.map(d => d.data() as User);
       setUsers(list);
+      // Automatically calculate total balance in hand using the fetched list!
+      fetchPlatformBalance(list);
     } catch (err) {
       console.error('Error fetching users:', err);
     } finally {
@@ -352,46 +354,31 @@ export const AdminPanel: React.FC<{ onClose: () => void; initialStealthMode?: bo
   };
 
   // Calculate live platform balance: retrieve persistent balance in hand
-  const fetchPlatformBalance = async () => {
+  const fetchPlatformBalance = async (usersList?: User[]) => {
     setLoadingPlatformBalance(true);
     try {
-      const settingsRef = doc(db, 'settings', 'global');
-      const settingsSnap = await getDoc(settingsRef);
+      let currentUsers = usersList || users;
+      if (currentUsers.length === 0) {
+        const usersRef = collection(db, 'users');
+        const snap = await getDocs(usersRef);
+        currentUsers = snap.docs.map(d => d.data() as User);
+        setUsers(currentUsers);
+      }
+
+      let totalSum = 0;
+      currentUsers.forEach(u => {
+        const bal = typeof u.balance === 'number' ? u.balance : parseFloat(u.balance || '0') || 0;
+        const active = typeof u.activeInvestments === 'number' ? u.activeInvestments : parseFloat(u.activeInvestments || '0') || 0;
+        totalSum += bal + active;
+      });
+
+      const balanceInHand = Number(totalSum.toFixed(2));
       
-      let balanceInHand = 0;
-      let hasBalanceInHandField = false;
+      // Save to global settings safely
+      const settingsRef = doc(db, 'settings', 'global');
+      await setDoc(settingsRef, { totalPlatformBalance: balanceInHand }, { merge: true });
 
-      if (settingsSnap.exists()) {
-        const data = settingsSnap.data();
-        if (typeof data.totalPlatformBalance === 'number') {
-          balanceInHand = data.totalPlatformBalance;
-          hasBalanceInHandField = true;
-        }
-      }
-
-      if (!hasBalanceInHandField) {
-        let currentUsers = users;
-        if (currentUsers.length === 0) {
-          const usersRef = collection(db, 'users');
-          const snap = await getDocs(usersRef);
-          currentUsers = snap.docs.map(d => d.data() as User);
-          setUsers(currentUsers);
-        }
-
-        let totalSum = 0;
-        currentUsers.forEach(u => {
-          const bal = typeof u.balance === 'number' ? u.balance : parseFloat(u.balance || '0') || 0;
-          const active = typeof u.activeInvestments === 'number' ? u.activeInvestments : parseFloat(u.activeInvestments || '0') || 0;
-          totalSum += bal + active;
-        });
-
-        balanceInHand = Number(totalSum.toFixed(2));
-        
-        // Save to global settings safely
-        await setDoc(settingsRef, { totalPlatformBalance: balanceInHand }, { merge: true });
-      }
-
-      setTotalPlatformBalance(Number(balanceInHand.toFixed(2)));
+      setTotalPlatformBalance(balanceInHand);
     } catch (err) {
       console.error('Error fetching platform balance:', err);
     } finally {
