@@ -81,6 +81,8 @@ interface AppContextType {
   setRiskModalOpen: (open: boolean) => void;
   privacyModalOpen: boolean;
   setPrivacyModalOpen: (open: boolean) => void;
+  termsModalOpen: boolean;
+  setTermsModalOpen: (open: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -89,6 +91,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [user, setUser] = useState<User | null>(null);
   const [riskModalOpen, setRiskModalOpen] = useState<boolean>(false);
   const [privacyModalOpen, setPrivacyModalOpen] = useState<boolean>(false);
+  const [termsModalOpen, setTermsModalOpen] = useState<boolean>(false);
   const [activePlans, setActivePlans] = useState<ActivePlan[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stocks, setStocks] = useState<StockData[]>(INITIAL_STOCKS);
@@ -1733,7 +1736,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       riskModalOpen,
       setRiskModalOpen,
       privacyModalOpen,
-      setPrivacyModalOpen
+      setPrivacyModalOpen,
+      termsModalOpen,
+      setTermsModalOpen
     }}>
       {children}
     </AppContext.Provider>

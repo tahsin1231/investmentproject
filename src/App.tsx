@@ -15,6 +15,7 @@ import { Footer } from './components/Footer';
 import { AdminPanel } from './components/AdminPanel';
 import { RiskModal } from './components/RiskModal';
 import { PrivacyModal } from './components/PrivacyModal';
+import { TermsModal } from './components/TermsModal';
 import { Terminal as TerminalIcon, CornerDownRight, Trophy } from 'lucide-react';
 
 interface TerminalLog {
@@ -23,7 +24,7 @@ interface TerminalLog {
 }
 
 function MainApp() {
-  const { user, activePlans, buyPlan, triggerMiningPayout, miningBalance, maintenanceMode, riskModalOpen, setRiskModalOpen, privacyModalOpen, setPrivacyModalOpen } = useApp();
+  const { user, activePlans, buyPlan, triggerMiningPayout, miningBalance, maintenanceMode, riskModalOpen, setRiskModalOpen, privacyModalOpen, setPrivacyModalOpen, termsModalOpen, setTermsModalOpen } = useApp();
   const [currentTab, setCurrentTab] = useState<'home' | 'markets' | 'earn' | 'wallet' | 'profile' | 'referral'>('home');
   const [authView, setAuthView] = useState<'login' | 'register' | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -512,6 +513,12 @@ function MainApp() {
       <PrivacyModal 
         isOpen={privacyModalOpen} 
         onClose={() => setPrivacyModalOpen(false)} 
+      />
+
+      {/* System Terms & Conditions Modal */}
+      <TermsModal 
+        isOpen={termsModalOpen} 
+        onClose={() => setTermsModalOpen(false)} 
       />
 
     </div>

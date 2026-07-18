@@ -5,7 +5,7 @@ import { Shield, Lock } from 'lucide-react';
 import logo from '../assets/images/dodooge_logo_1784344899100.jpg';
 
 export const Footer: React.FC = () => {
-  const { language, setRiskModalOpen, setPrivacyModalOpen } = useApp();
+  const { language, setRiskModalOpen, setPrivacyModalOpen, setTermsModalOpen } = useApp();
   const t = translations[language];
 
   return (
@@ -27,7 +27,12 @@ export const Footer: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap justify-center gap-4 text-[10px] uppercase items-center">
-            <a href="#terms" className="hover:text-emerald-400 transition-colors">[Terms]</a>
+            <button 
+              onClick={() => setTermsModalOpen(true)} 
+              className="hover:text-emerald-400 transition-colors cursor-pointer bg-transparent border-none uppercase font-mono text-[10px]"
+            >
+              [Terms]
+            </button>
             <button 
               onClick={() => setPrivacyModalOpen(true)} 
               className="hover:text-emerald-400 transition-colors cursor-pointer bg-transparent border-none uppercase font-mono text-[10px] flex items-center gap-1.5"
