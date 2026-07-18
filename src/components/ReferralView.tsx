@@ -27,7 +27,7 @@ interface LeaderboardUser {
 }
 
 export const ReferralView: React.FC = () => {
-  const { user, language } = useApp();
+  const { user, language, referralCommissionRate } = useApp();
   const t = translations[language];
 
   const [copiedLink, setCopiedLink] = useState(false);
@@ -81,8 +81,8 @@ export const ReferralView: React.FC = () => {
           allUsers.sort((a, b) => b.allTimeReferrals - a.allTimeReferrals);
         }
 
-        // Limit to top 15
-        setLeaderboard(allUsers.slice(0, 15));
+        // Limit to top 10
+        setLeaderboard(allUsers.slice(0, 10));
       } catch (err) {
         console.error('Error fetching leaderboard:', err);
       } finally {
@@ -152,7 +152,7 @@ export const ReferralView: React.FC = () => {
           </div>
           <h2 className="text-lg font-bold text-white uppercase tracking-tight">DODOOGE DELEGATE NETWORKING</h2>
           <p className="text-emerald-500/80 text-xs leading-relaxed uppercase">
-            Deploy your unique sub-node registration telemetry. Earn up to 20% instant cash back commission inside your master ledger every single time your referred delegates subscribe or activate mining contracts.
+            Deploy your unique sub-node registration telemetry. Earn up to {referralCommissionRate || 20}% instant cash back commission inside your master ledger every single time your referred delegates subscribe or activate mining contracts.
           </p>
           <div className="text-[10px] text-amber-400 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 leading-relaxed uppercase font-sans">
             🎁 <b>Sub-node Benefit:</b> Your referrals receive a <b>50% instant refund on lost OTC trades</b> when they register using your referral link! Direct signups get 0% refund.

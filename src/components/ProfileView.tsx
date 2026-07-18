@@ -4,7 +4,7 @@ import { translations } from '../utils/translations';
 import { ShieldCheck, Share2, Copy, Check, Users, HelpCircle, Award, Terminal, LogOut } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
-  const { user, referrals, language, logout, setRiskModalOpen } = useApp();
+  const { user, referrals, language, logout, setRiskModalOpen, referralCommissionRate } = useApp();
   const t = translations[language];
 
   const [copiedLink, setCopiedLink] = useState(false);
@@ -138,7 +138,7 @@ export const ProfileView: React.FC = () => {
           </div>
           <h2 className="text-md font-bold text-white uppercase tracking-tight">{t.referralTitle}</h2>
           <p className="text-emerald-500/80 text-xs mt-1.5 leading-relaxed uppercase">
-            {t.referralDesc}
+            {t.referralDesc.replace('20%', `${referralCommissionRate || 20}%`)}
           </p>
           <div className="mt-2 text-[10px] text-amber-400 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 leading-relaxed uppercase font-sans">
             🎁 <b>Sub-node Benefit:</b> Your referrals receive a <b>50% refund on lost OTC trades</b> when they register using your referral link! Direct signups get 0% refund.
@@ -179,7 +179,7 @@ export const ProfileView: React.FC = () => {
 
           {referrals.length === 0 ? (
             <div className="border border-emerald-500/10 rounded-lg p-6 text-center text-emerald-500/40 text-xs uppercase">
-              No registered referral peers identified. Share link to route 20% instant dividends.
+              No registered referral peers identified. Share link to route {referralCommissionRate || 20}% instant dividends.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -196,7 +196,7 @@ export const ProfileView: React.FC = () => {
                     <tr key={idx} className="border-b border-emerald-500/10 text-emerald-400/80">
                       <td className="py-2.5 text-emerald-300 font-semibold">{ref.email}</td>
                       <td className="py-2.5 text-emerald-500/50">{ref.date}</td>
-                      <td className="py-2.5 text-right font-bold text-emerald-400">20% INSTANT</td>
+                      <td className="py-2.5 text-right font-bold text-emerald-400">{referralCommissionRate || 20}% INSTANT</td>
                     </tr>
                   ))}
                 </tbody>
