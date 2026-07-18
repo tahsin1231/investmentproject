@@ -79,6 +79,8 @@ interface AppContextType {
   resolveOtcTrade: (roundIdOrTradeId: string | number, isDurationTrade?: boolean, wonOverride?: boolean, finalPrice?: number) => Promise<{ success: boolean; outcome?: 'buy' | 'sell'; won?: boolean; refund?: boolean }>;
   riskModalOpen: boolean;
   setRiskModalOpen: (open: boolean) => void;
+  privacyModalOpen: boolean;
+  setPrivacyModalOpen: (open: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -86,6 +88,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [riskModalOpen, setRiskModalOpen] = useState<boolean>(false);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState<boolean>(false);
   const [activePlans, setActivePlans] = useState<ActivePlan[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stocks, setStocks] = useState<StockData[]>(INITIAL_STOCKS);
@@ -1728,7 +1731,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       placeOtcTrade,
       resolveOtcTrade,
       riskModalOpen,
-      setRiskModalOpen
+      setRiskModalOpen,
+      privacyModalOpen,
+      setPrivacyModalOpen
     }}>
       {children}
     </AppContext.Provider>

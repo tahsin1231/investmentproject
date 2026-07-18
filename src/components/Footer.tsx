@@ -2,9 +2,10 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import { translations } from '../utils/translations';
 import { Shield, Lock } from 'lucide-react';
+import logo from '../assets/images/dodooge_logo_1784344899100.jpg';
 
 export const Footer: React.FC = () => {
-  const { language, setRiskModalOpen } = useApp();
+  const { language, setRiskModalOpen, setPrivacyModalOpen } = useApp();
   const t = translations[language];
 
   return (
@@ -25,9 +26,19 @@ export const Footer: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex flex-wrap justify-center gap-4 text-[10px] uppercase">
+          <div className="flex flex-wrap justify-center gap-4 text-[10px] uppercase items-center">
             <a href="#terms" className="hover:text-emerald-400 transition-colors">[Terms]</a>
-            <a href="#privacy" className="hover:text-emerald-400 transition-colors">[Privacy]</a>
+            <button 
+              onClick={() => setPrivacyModalOpen(true)} 
+              className="hover:text-emerald-400 transition-colors cursor-pointer bg-transparent border-none uppercase font-mono text-[10px] flex items-center gap-1.5"
+            >
+              <img 
+                src={logo} 
+                alt="Doc Icon" 
+                className="w-4 h-4 object-contain filter drop-shadow-[0_0_3px_rgba(59,240,168,0.5)]" 
+              />
+              <span>[Privacy]</span>
+            </button>
             <button 
               onClick={() => setRiskModalOpen(true)} 
               className="hover:text-emerald-400 transition-colors cursor-pointer bg-transparent border-none uppercase font-mono text-[10px]"
